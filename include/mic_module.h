@@ -10,6 +10,9 @@
 #include <driver/adc.h>
 #include <LittleFS.h>
 #include <ArduinoJson.h>
+#include <freertos/FreeRTOS.h>
+#include <freertos/semphr.h>  // MUTEX FIX: serialize _readI2S/_readADC/
+                              // _readHybrid which share static buffers
 
 // ── File paths ────────────────────────────────────────────────
 #define MIC_GPIO_FILE     "/mic_gpio.json"
@@ -132,6 +135,12 @@ private:
     bool    _recording      = false;
     bool    _speakerActive  = false;
     uint8_t _volume         = 0;
+
+    // MUTEX FIX: _readI2S/_readADC/_readHybrid all use function-static
+    // buffers (raw[], i2sBuf[], adcBuf[]). When the WS streaming task
+    // (calls readChunk) and the loop() recording tick run concurrently
+    // they would tear those buffers. _readMutex serialises them.
+    SemaphoreHandle_t _readMutex = nullptr;
 
     // Recording file
     File     _recFile;

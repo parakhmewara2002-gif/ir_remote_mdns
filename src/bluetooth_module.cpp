@@ -128,10 +128,17 @@ void BluetoothModule::_onHrNotify(void* chr, uint8_t* data, size_t len, bool not
 // ── Temperature notification callback ────────────────────────
 void BluetoothModule::_onTempNotify(void* chr, uint8_t* data, size_t len, bool notify) {
     if (!s_bt || len < 5) return;
-    // IEEE-11073 float: byte 1-4
-    int32_t mantissa = (int32_t)(((int32_t)data[3] << 16) |
-                                 ((uint32_t)data[2] << 8)  |
-                                  (uint32_t)data[1]);
+    // SIGN-EXT FIX: IEEE-11073 medical FLOAT mantissa is a SIGNED 24-bit
+    // value. Previous code assembled it as uint then cast — fine for
+    // positive temps but for negative readings (Sharp watch, freezer)
+    // the high bit of data[3] indicated 'negative' and got interpreted
+    // as +8388608 instead of a small negative number.
+    uint32_t raw = ((uint32_t)data[3] << 16) |
+                   ((uint32_t)data[2] << 8)  |
+                    (uint32_t)data[1];
+    int32_t mantissa = (raw & 0x800000)
+                       ? (int32_t)(raw | 0xFF000000)
+                       : (int32_t)raw;
     int8_t  exponent = (int8_t)data[4];
     float   temp = mantissa * powf(10.0f, exponent);
     s_bt->_watchData.temperature = temp;
@@ -560,7 +567,10 @@ void BluetoothModule::hidSendMedia(uint8_t usage) {
     BLEHIDDevice* hid = reinterpret_cast<BLEHIDDevice*>(_pHidDevice);
     BLECharacteristic* input = hid->inputReport(2);
     if (!input) return;
-    uint16_t report = (1 << usage) & 0xFFFF;
+    // UB FIX: usage > 15 was shifting `int 1` by attacker-controlled
+    // amount up to 255; >=31 is undefined behavior in C++. Cap to the
+    // 16-bit report range.
+    uint16_t report = (usage < 16) ? (uint16_t)(1u << usage) : 0;
     uint8_t buf[2] = { (uint8_t)(report & 0xFF), (uint8_t)(report >> 8) };
     input->setValue(buf, 2);
     input->notify();

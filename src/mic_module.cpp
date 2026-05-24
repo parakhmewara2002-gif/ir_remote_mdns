@@ -150,12 +150,22 @@ int16_t MicModule::_applyGain(int32_t raw, uint8_t gain) const {
 }
 
 // ── I2S read -> PCM int16 ─────────────────────────────────────
+// MUTEX FIX: lazy-create a RECURSIVE mutex and serialise access to the
+// static `raw` buffer below. Two callers (WS stream task via readChunk
+// and the recording-loop tick) can otherwise tear it. Recursive type
+// because _readHybrid takes the same mutex and then calls _readI2S.
 size_t MicModule::_readI2S(int16_t* pcm, size_t maxSamples) {
     static int32_t raw[MIC_DMA_BUF_LEN * 2];
+    if (!_readMutex) _readMutex = xSemaphoreCreateRecursiveMutex();
+    if (_readMutex &&
+        xSemaphoreTakeRecursive(_readMutex, pdMS_TO_TICKS(50)) != pdTRUE)
+        return 0;
     size_t bytesRead = 0;
     if (i2s_read(MIC_I2S_PORT, raw, sizeof(raw),
-                 &bytesRead, pdMS_TO_TICKS(8)) != ESP_OK)
+                 &bytesRead, pdMS_TO_TICKS(8)) != ESP_OK) {
+        if (_readMutex) xSemaphoreGiveRecursive(_readMutex);
         return 0;
+    }
 
     size_t n = bytesRead / sizeof(int32_t);
     size_t out = 0;
@@ -173,6 +183,7 @@ size_t MicModule::_readI2S(int16_t* pcm, size_t maxSamples) {
         if (abs((int32_t)L) > peak) peak = abs((int32_t)L);
     }
     _volume = (uint8_t)(peak * 100 / 32768);
+    if (_readMutex) xSemaphoreGiveRecursive(_readMutex);
     return out;
 }
 
@@ -219,9 +230,18 @@ size_t MicModule::_readADC(int16_t* pcm, size_t maxSamples) {
 }
 
 // ── Hybrid read - blend I2S + ADC ────────────────────────────
+// MUTEX FIX: i2sBuf / adcBuf are shared static buffers. Two concurrent
+// calls would have the second's _readI2S overwrite the first's data
+// (each _readI2S already locks but passes the same static i2sBuf
+// pointer). Serialise the whole function with the same mutex.
 size_t MicModule::_readHybrid(int16_t* pcm, size_t maxSamples) {
     static int16_t i2sBuf[MIC_DMA_BUF_LEN * 2];
     static int16_t adcBuf[MIC_DMA_BUF_LEN * 2];
+
+    if (!_readMutex) _readMutex = xSemaphoreCreateRecursiveMutex();
+    if (_readMutex &&
+        xSemaphoreTakeRecursive(_readMutex, pdMS_TO_TICKS(50)) != pdTRUE)
+        return 0;
 
     size_t i2sN = _readI2S(i2sBuf, maxSamples);
     size_t adcN = _readADC(adcBuf, maxSamples);
@@ -237,6 +257,7 @@ size_t MicModule::_readHybrid(int16_t* pcm, size_t maxSamples) {
         int32_t blended = (iv * wi + av * wa) / 100;
         pcm[i] = (int16_t)constrain(blended, -32768, 32767);
     }
+    if (_readMutex) xSemaphoreGiveRecursive(_readMutex);
     return n;
 }
 

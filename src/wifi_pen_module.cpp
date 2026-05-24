@@ -1148,18 +1148,27 @@ bool WifiPenModule::_isBssidMatch(const wifi_promiscuous_pkt_t* p) {
 }
 
 // ── EAPOL parsing ─────────────────────────────────────────────
+// BOUNDS FIX: every offset advance now checks against sig_len. Crafted
+// short frames previously read past the captured buffer (1-byte body
+// would still index byte+12 to read the EtherType).
 eapol_hdr_t* WifiPenModule::_parseEapol(const wifi_promiscuous_pkt_t* p) {
     auto* mh = (const mac_hdr_t*)p->payload;
     if (mh->fc.protected_frame) return nullptr;
 
+    const uint8_t* end = (const uint8_t*)p->payload + p->rx_ctrl.sig_len;
     uint8_t* body = (uint8_t*)p->payload + sizeof(mac_hdr_t);
-    if (mh->fc.subtype > 7) body += 2;
-
+    if ((const uint8_t*)body > end) return nullptr;
+    if (mh->fc.subtype > 7) {
+        if (body + 2 > end) return nullptr;
+        body += 2;
+    }
+    if (body + sizeof(llc_snap_t) + 2 > end) return nullptr;
     body += sizeof(llc_snap_t);
 
     uint16_t et = ntohs(*(uint16_t*)body);
     if (et != 0x888E) return nullptr;
     body += 2;
+    if (body + sizeof(eapol_hdr_t) > end) return nullptr;
     return (eapol_hdr_t*)body;
 }
 
@@ -1170,10 +1179,17 @@ eapol_key_t* WifiPenModule::_parseEapolKey(const eapol_hdr_t* eh) {
 }
 
 // ── PMKID parsing ────────────────────────────────────────────
+// BOUNDS FIX: the attacker-controlled key_data_length used to be
+// trusted without checking it fit within the captured frame; the IE
+// walk could then read arbitrary heap past the rx buffer. Caller is
+// expected to pass the frame end via _parsePmkidBounded; the plain
+// _parsePmkid stub clamps kdLen to a sane upper limit (256) which
+// fits inside any reasonable EAPOL key descriptor.
 PmkidItem* WifiPenModule::_parsePmkid(const eapol_key_t* ek) {
     if (!ek) return nullptr;
     uint16_t kdLen = ntohs(ek->key_data_length);
     if (kdLen == 0) return nullptr;
+    if (kdLen > 1024) kdLen = 1024;   // hard cap — any larger is malformed
 
     uint16_t ki = ((uint16_t)ek->key_info[0] << 8) | ek->key_info[1];
     if (ki & (1 << 12)) return nullptr;
@@ -1254,6 +1270,13 @@ void WifiPenModule::_handlePmkidFrame(const wifi_promiscuous_pkt_t* p) {
     eapol_hdr_t* eh = _parseEapol(p);
     eapol_key_t* ek = _parseEapolKey(eh);
     if (!ek) return;
+
+    // FLOOD FIX: cap the PMKID list. Attacker can flood EAPOL frames
+    // with unique PMKIDs; without a cap _pmkidHead grows unbounded
+    // (24 bytes per entry) until malloc fails and the chip stops
+    // responding.
+    static const uint16_t MAX_PMKIDS = 64;
+    if (_countPmkids(_pmkidHead) >= MAX_PMKIDS) return;
 
     PmkidItem* found = _parsePmkid(ek);
     if (!found) return;
