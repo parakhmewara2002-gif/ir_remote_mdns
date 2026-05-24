@@ -17,7 +17,34 @@
 SdManager sdMgr;
 
 // C-04 FIX: Global VSPI bus mutex - defined here, extern declared in sd_manager.h.
+// Changed to RECURSIVE so internal SdManager methods that call each other do
+// not self-deadlock (e.g. createTar calls _dirSizeImpl which both want the
+// lock). NFC / NRF24 also share VSPI; any caller that touches SD.* should be
+// holding this mutex.
 SemaphoreHandle_t g_spi_vspi_mutex = nullptr;
+
+// SD SPI MUTEX SWEEP: RAII wrapper. Constructed at the top of each public
+// SdManager method that performs SD.* operations; takes the recursive bus
+// mutex and gives it back on scope exit. Drops gracefully (no lock) if the
+// mutex was never created (very early boot before begin() ran). Times out
+// after 2 s so a stuck SD operation cannot wedge the rest of the firmware.
+namespace {
+class SdSpiLock {
+public:
+    SdSpiLock() : _ok(false) {
+        if (g_spi_vspi_mutex)
+            _ok = (xSemaphoreTakeRecursive(g_spi_vspi_mutex,
+                                            pdMS_TO_TICKS(2000)) == pdTRUE);
+    }
+    ~SdSpiLock() {
+        if (_ok && g_spi_vspi_mutex)
+            xSemaphoreGiveRecursive(g_spi_vspi_mutex);
+    }
+    bool ok() const { return _ok; }
+private:
+    bool _ok;
+};
+}  // namespace
 
 // ── Constructor ──────────────────────────────────────────────
 SdManager::SdManager()
@@ -52,9 +79,10 @@ SdManager::SdManager()
 
 // ── begin ────────────────────────────────────────────────────
 void SdManager::begin() {
-    // C-04 FIX: create the global VSPI bus mutex.
+    // C-04 FIX: create the global VSPI bus mutex (recursive — see header
+    // comment above SdSpiLock).
     if (!g_spi_vspi_mutex) {
-        g_spi_vspi_mutex = xSemaphoreCreateMutex();
+        g_spi_vspi_mutex = xSemaphoreCreateRecursiveMutex();
         if (!g_spi_vspi_mutex) {
             Serial.println("[SD] FATAL: could not create VSPI mutex");
         }
@@ -91,9 +119,12 @@ void SdManager::begin() {
 
 // ── [#36] _mount with SPI frequency auto-tune ───────────────
 bool SdManager::_mount() {
+    // Use RAII guard (recursive — _mount can be called from inside another
+    // already-locked method like remount-on-event-loop).
     bool tookMutex = false;
     if (g_spi_vspi_mutex) {
-        tookMutex = (xSemaphoreTake(g_spi_vspi_mutex, pdMS_TO_TICKS(100)) == pdTRUE);
+        tookMutex = (xSemaphoreTakeRecursive(g_spi_vspi_mutex,
+                                              pdMS_TO_TICKS(100)) == pdTRUE);
     }
 
     SD.end();
@@ -115,11 +146,11 @@ bool SdManager::_mount() {
 
     if (!ok) {
         _mounted = false;
-        if (tookMutex) xSemaphoreGive(g_spi_vspi_mutex);
+        if (tookMutex) xSemaphoreGiveRecursive(g_spi_vspi_mutex);
         return false;
     }
 
-    if (tookMutex) xSemaphoreGive(g_spi_vspi_mutex);
+    if (tookMutex) xSemaphoreGiveRecursive(g_spi_vspi_mutex);
 
     _mounted           = true;
     _mountedFreq       = usedFreq;
@@ -346,6 +377,7 @@ String SdManager::pollWsLog() {
 
 // ── [#5] streamLog ───────────────────────────────────────────
 bool SdManager::streamLog(Print& out) const {
+    SdSpiLock _l;
     if (!_mounted || !SD.exists(SD_LOG_FILE)) return false;
     File f = SD.open(SD_LOG_FILE, FILE_READ);
     if (!f) return false;
@@ -360,6 +392,7 @@ bool SdManager::streamLog(Print& out) const {
 
 // ── [#2] _flushLogRing with log rotation ─────────────────────
 void SdManager::_flushLogRing() {
+    SdSpiLock _l;
     if (!_mounted) return;
 
     char buf[LOG_RING_SIZE];
@@ -410,6 +443,7 @@ void SdManager::_flushLogRing() {
 
 // ── tailLog ──────────────────────────────────────────────────
 String SdManager::tailLog(uint16_t lines) const {
+    SdSpiLock _l;
     if (!_mounted) return "";
     if (!SD.exists(SD_LOG_FILE)) return "";
     File f = SD.open(SD_LOG_FILE, FILE_READ);
@@ -440,6 +474,7 @@ String SdManager::tailLog(uint16_t lines) const {
 
 // ── [#45] tailLogFiltered ────────────────────────────────────
 String SdManager::tailLogFiltered(uint16_t lines, SdLogLevel minLevel) const {
+    SdSpiLock _l;
     String raw = tailLog(lines * 3); // fetch more lines to have enough after filtering
     if (raw.isEmpty()) return "";
 
@@ -475,6 +510,7 @@ String SdManager::tailLogFiltered(uint16_t lines, SdLogLevel minLevel) const {
 
 // ── listDir ──────────────────────────────────────────────────
 std::vector<SdFileEntry> SdManager::listDir(const String& path) const {
+    SdSpiLock _l;
     std::vector<SdFileEntry> result;
     if (!_mounted || !_safePath(path)) return result;
 
@@ -532,6 +568,7 @@ void SdManager::_listDirRecursiveImpl(const String& path, uint8_t depth,
 // ── [#39] listDirPaged ───────────────────────────────────────
 SdPage SdManager::listDirPaged(const String& path,
                                 uint16_t offset, uint16_t limit) const {
+    SdSpiLock _l;
     SdPage page;
     page.total  = 0;
     page.offset = offset;
@@ -548,6 +585,7 @@ std::vector<SdFileEntry> SdManager::listDirSorted(const String& path,
                                                     SdSort sort,
                                                     bool asc,
                                                     const String& extFilter) const {
+    SdSpiLock _l;
     auto all = listDir(path);
 
     // Apply extension filter (empty = no filter)
@@ -582,6 +620,7 @@ std::vector<SdFileEntry> SdManager::listDirSorted(const String& path,
 
 // ── deleteFile ───────────────────────────────────────────────
 bool SdManager::deleteFile(const String& path) {
+    SdSpiLock _l;
     if (!_mounted || !_safePath(path)) return false;
     if (!SD.exists(path)) return false;
     bool ok = SD.remove(path);
@@ -600,6 +639,7 @@ uint16_t SdManager::deleteFiles(const std::vector<String>& paths) {
 
 // ── renameFile ───────────────────────────────────────────────
 bool SdManager::renameFile(const String& from, const String& to) {
+    SdSpiLock _l;
     if (!_mounted || !_safePath(from) || !_safePath(to)) return false;
     bool ok = SD.rename(from, to);
     if (ok) log(String("Renamed: ") + from + " -> " + to);
@@ -608,18 +648,21 @@ bool SdManager::renameFile(const String& from, const String& to) {
 
 // ── makeDir ──────────────────────────────────────────────────
 bool SdManager::makeDir(const String& path) {
+    SdSpiLock _l;
     if (!_mounted || !_safePath(path)) return false;
     return SD.mkdir(path);
 }
 
 // ── exists ───────────────────────────────────────────────────
 bool SdManager::exists(const String& path) const {
+    SdSpiLock _l;
     if (!_mounted) return false;
     return SD.exists(path);
 }
 
 // ── [#10] dirSize ────────────────────────────────────────────
 size_t SdManager::dirSize(const String& path) const {
+    SdSpiLock _l;
     if (!_mounted || !_safePath(path)) return 0;
     return _dirSizeImpl(path);
 }
@@ -640,6 +683,7 @@ size_t SdManager::_dirSizeImpl(const String& path) const {
 // ── [#11] findFiles ──────────────────────────────────────────
 std::vector<SdFileEntry> SdManager::findFiles(const String& dir,
                                                const String& pattern) const {
+    SdSpiLock _l;
     std::vector<SdFileEntry> result;
     if (!_mounted) return result;
     String lp = pattern;
@@ -659,6 +703,7 @@ std::vector<SdFileEntry> SdManager::findFiles(const String& dir,
 // ── [#12] createTar ──────────────────────────────────────────
 // Writes a simple ustar TAR archive.  Skips if dir > 512 KB.
 bool SdManager::createTar(const String& dir, const String& outPath) const {
+    SdSpiLock _l;
     if (!_mounted || !_safePath(dir) || !_safePath(outPath)) return false;
     // Guard: refuse if dir too large
     if (_dirSizeImpl(dir) > 512UL * 1024UL) return false;
@@ -731,6 +776,7 @@ bool SdManager::createTar(const String& dir, const String& outPath) const {
 
 // ── getFileInfo ──────────────────────────────────────────────
 SdFileEntry SdManager::getFileInfo(const String& path) const {
+    SdSpiLock _l;
     SdFileEntry fe;
     fe.size    = 0;
     fe.isDir   = false;
@@ -751,6 +797,7 @@ SdFileEntry SdManager::getFileInfo(const String& path) const {
 
 // ── readTextFile ─────────────────────────────────────────────
 String SdManager::readTextFile(const String& path, size_t maxBytes) const {
+    SdSpiLock _l;
     if (!_mounted || !_safePath(path)) return "";
     File f = SD.open(path, FILE_READ);
     if (!f) return "";
@@ -773,6 +820,7 @@ String SdManager::readTextFile(const String& path, size_t maxBytes) const {
 
 // ── [#8] previewFile ─────────────────────────────────────────
 SdPreview SdManager::previewFile(const String& path, size_t maxBytes) const {
+    SdSpiLock _l;
     SdPreview p;
     p.path     = path;
     p.fileSize = 0;
@@ -795,6 +843,7 @@ SdPreview SdManager::previewFile(const String& path, size_t maxBytes) const {
 
 // ── copyFileSd ───────────────────────────────────────────────
 bool SdManager::copyFileSd(const String& src, const String& dst) {
+    SdSpiLock _l;
     if (!_mounted || !_safePath(src) || !_safePath(dst)) return false;
     if (src == dst) return false;
     if (SD.exists(dst)) {
@@ -809,6 +858,7 @@ bool SdManager::copyFileSd(const String& src, const String& dst) {
 
 // ── moveFile ─────────────────────────────────────────────────
 bool SdManager::moveFile(const String& src, const String& dst) {
+    SdSpiLock _l;
     if (!_mounted || !_safePath(src) || !_safePath(dst)) return false;
     if (src == dst) return false;
     if (SD.rename(src, dst)) {
@@ -826,6 +876,7 @@ bool SdManager::moveFile(const String& src, const String& dst) {
 
 // ── deleteRecursive ──────────────────────────────────────────
 bool SdManager::deleteRecursive(const String& path) {
+    SdSpiLock _l;
     if (!_mounted || !_safePath(path)) return false;
     if (!SD.exists(path)) return false;
     bool ok = _deleteRecursiveImpl(path);
@@ -868,6 +919,7 @@ bool SdManager::_deleteRecursiveImpl(const String& path) {
 
 // ── formatCard ───────────────────────────────────────────────
 bool SdManager::formatCard() {
+    SdSpiLock _l;
     if (!_mounted) return false;
     Serial.println(DEBUG_TAG " [SD] FORMAT REQUESTED - unmounting before format");
     _flushLogRing();
@@ -898,6 +950,7 @@ bool SdManager::formatCard() {
 
 // ── [#37] safeWriteFile ──────────────────────────────────────
 bool SdManager::safeWriteFile(const String& path, const String& data) {
+    SdSpiLock _l;
     if (!_mounted || !_safePath(path)) return false;
     String tmpPath = path + ".tmp";
     File f = SD.open(tmpPath, FILE_WRITE);
@@ -920,6 +973,7 @@ bool SdManager::writeAsync(const String& path, const String& data, bool append) 
 }
 
 void SdManager::_drainWriteQueue() {
+    SdSpiLock _l;
     if (!_writeQueue || !_mounted) return;
     SdWriteJob* job = nullptr;
     while (xQueueReceive(_writeQueue, &job, 0) == pdTRUE && job) {
@@ -1056,6 +1110,7 @@ bool SdManager::_copyFileWithCrc(const String& src, const String& dst,
 
 // ── exportIRLibrary ──────────────────────────────────────────
 bool SdManager::exportIRLibrary(const String& name) {
+    SdSpiLock _l;
     if (!_mounted) return false;
     String path = String(SD_DIR_IR_LIBRARY) + "/" + name + ".json";
     if (!_safePath(path)) return false;
@@ -1072,6 +1127,7 @@ bool SdManager::exportIRLibrary(const String& name) {
 
 // ── importIRLibrary ──────────────────────────────────────────
 bool SdManager::importIRLibrary(const String& name) {
+    SdSpiLock _l;
     if (!_mounted) return false;
     String path = String(SD_DIR_IR_LIBRARY) + "/" + name + ".json";
     if (!_safePath(path) || !SD.exists(path)) return false;
@@ -1091,6 +1147,7 @@ bool SdManager::importIRLibrary(const String& name) {
 
 // ── listIRLibraries ──────────────────────────────────────────
 std::vector<String> SdManager::listIRLibraries() const {
+    SdSpiLock _l;
     std::vector<String> result;
     if (!_mounted) return result;
     auto entries = listDir(SD_DIR_IR_LIBRARY);
@@ -1103,6 +1160,7 @@ std::vector<String> SdManager::listIRLibraries() const {
 
 // ── mergeIRLibrary ───────────────────────────────────────────
 int SdManager::mergeIRLibrary(const String& name) {
+    SdSpiLock _l;
     if (!_mounted) return -1;
     String path = String(SD_DIR_IR_LIBRARY) + "/" + name;
     if (!path.endsWith(".json")) path += ".json";
@@ -1124,6 +1182,7 @@ int SdManager::mergeIRLibrary(const String& name) {
 
 // ── deleteIRLibrary ──────────────────────────────────────────
 bool SdManager::deleteIRLibrary(const String& name) {
+    SdSpiLock _l;
     if (!_mounted) return false;
     String path = String(SD_DIR_IR_LIBRARY) + "/" + name;
     if (!path.endsWith(".json")) path += ".json";
@@ -1135,6 +1194,7 @@ bool SdManager::deleteIRLibrary(const String& name) {
 
 // ── renameIRLibrary ──────────────────────────────────────────
 bool SdManager::renameIRLibrary(const String& oldName, const String& newName) {
+    SdSpiLock _l;
     if (!_mounted) return false;
     String oldPath = String(SD_DIR_IR_LIBRARY) + "/" + oldName;
     String newPath = String(SD_DIR_IR_LIBRARY) + "/" + newName;
@@ -1149,6 +1209,7 @@ bool SdManager::renameIRLibrary(const String& oldName, const String& newName) {
 
 // ── saveButtonToLibrary ──────────────────────────────────────
 bool SdManager::saveButtonToLibrary(const String& libName, uint32_t buttonId) {
+    SdSpiLock _l;
     if (!_mounted) return false;
     IRButton btn = irDB.findById(buttonId);
     if (btn.id == 0) return false;
@@ -1203,6 +1264,7 @@ bool SdManager::saveButtonToLibrary(const String& libName, uint32_t buttonId) {
 
 // ── [#19] getLibraryMeta ─────────────────────────────────────
 IrLibMeta SdManager::getLibraryMeta(const String& name) const {
+    SdSpiLock _l;
     IrLibMeta meta;
     meta.buttonCount = 0;
     if (!_mounted) return meta;
@@ -1233,6 +1295,7 @@ IrLibMeta SdManager::getLibraryMeta(const String& name) const {
 // ── [#20] searchLibrary ──────────────────────────────────────
 std::vector<String> SdManager::searchLibrary(const String& libName,
                                                const String& query) const {
+    SdSpiLock _l;
     std::vector<String> result;
     if (!_mounted) return result;
     String path = String(SD_DIR_IR_LIBRARY) + "/" + libName;
@@ -1341,6 +1404,7 @@ void SdManager::_checkAutoExport() {
 
 // ── [#23] exportIRLibraryVersioned ───────────────────────────
 bool SdManager::exportIRLibraryVersioned(const String& name) {
+    SdSpiLock _l;
     if (!_mounted) return false;
 
     // Build timestamped filename
@@ -1386,6 +1450,7 @@ bool SdManager::exportIRLibraryVersioned(const String& name) {
 
 // ── [#24] importFlipperIR ────────────────────────────────────
 int SdManager::importFlipperIR(const String& path) {
+    SdSpiLock _l;
     if (!_mounted || !_safePath(path) || !SD.exists(path)) return -1;
     File f = SD.open(path, FILE_READ);
     if (!f) return -1;
@@ -1473,6 +1538,7 @@ int SdManager::importFlipperIR(const String& path) {
 
 // ── Feature 3: bulkImportIRLibraries ─────────────────────────
 SdManager::SdImportResult SdManager::bulkImportIRLibraries() {
+    SdSpiLock _l;
     SdImportResult result{0, 0, {}};
     if (!_mounted) {
         result.errors.push_back("SD not available");
@@ -1528,6 +1594,7 @@ void SdManager::setDefaultLib(const String& name) {
 // ── saveRawDump ───────────────────────────────────────────────
 bool SdManager::saveRawDump(const String& name, const uint16_t* data,
                               size_t len, uint16_t freqKHz) {
+    SdSpiLock _l;
     if (!_mounted || !data || len == 0) return false;
     String path = String(SD_DIR_RAW_DUMPS) + "/" + name + ".csv";
     if (!_safePath(path)) return false;
@@ -1546,6 +1613,7 @@ bool SdManager::saveRawDump(const String& name, const uint16_t* data,
 
 // ── [#14][#34] backupToSD with manifest and CRC ──────────────
 bool SdManager::backupToSD(const String& tag) {
+    SdSpiLock _l;
     if (!_mounted) return false;
     String dir = String(SD_DIR_BACKUPS) + "/" + tag;
     if (!_safePath(dir)) return false;
@@ -1596,6 +1664,7 @@ bool SdManager::backupToSD(const String& tag) {
 
 // ── [#34] restoreFromSD with CRC verification ────────────────
 bool SdManager::restoreFromSD(const String& tag) {
+    SdSpiLock _l;
     if (!_mounted) return false;
     String dir = String(SD_DIR_BACKUPS) + "/" + tag;
     if (!_safePath(dir) || !SD.exists(dir)) return false;
@@ -1670,6 +1739,7 @@ bool SdManager::restoreFromSD(const String& tag) {
 
 // ── listBackups ──────────────────────────────────────────────
 std::vector<String> SdManager::listBackups() const {
+    SdSpiLock _l;
     std::vector<String> result;
     if (!_mounted) return result;
     auto entries = listDir(SD_DIR_BACKUPS);
@@ -1708,6 +1778,7 @@ void SdManager::_checkAutoBackup() {
 
 // ── [#15] backupDeltaToSD ────────────────────────────────────
 bool SdManager::backupDeltaToSD(const String& tag) {
+    SdSpiLock _l;
     if (!_mounted) return false;
     String dir = String(SD_DIR_BACKUPS) + "/" + tag;
     if (!_safePath(dir)) return false;
@@ -1749,6 +1820,7 @@ bool SdManager::backupDeltaToSD(const String& tag) {
 
 // ── [#16] backupLittleFSImage ────────────────────────────────
 bool SdManager::backupLittleFSImage(const String& tag) {
+    SdSpiLock _l;
     if (!_mounted) return false;
     String dir = String(SD_DIR_BACKUPS) + "/" + tag;
     if (!_safePath(dir)) return false;
@@ -1800,6 +1872,7 @@ bool SdManager::backupLittleFSImage(const String& tag) {
 
 // ── [#17] pruneBackups ───────────────────────────────────────
 void SdManager::pruneBackups(uint8_t maxKeep) {
+    SdSpiLock _l;
     if (!_mounted) return;
     auto entries = listDir(SD_DIR_BACKUPS);
     std::vector<String> dirs;
@@ -1817,6 +1890,7 @@ void SdManager::pruneBackups(uint8_t maxKeep) {
 
 // ── [#18] restoreDryRun ──────────────────────────────────────
 std::vector<String> SdManager::restoreDryRun(const String& tag) const {
+    SdSpiLock _l;
     std::vector<String> overwritten;
     if (!_mounted) return overwritten;
     String dir = String(SD_DIR_BACKUPS) + "/" + tag;
@@ -1833,6 +1907,7 @@ std::vector<String> SdManager::restoreDryRun(const String& tag) const {
 
 // ── queueMacro ───────────────────────────────────────────────
 bool SdManager::queueMacro(const String& filename) {
+    SdSpiLock _l;
     if (!_mounted) return false;
     if (_macroRunning) return false;
 
@@ -1975,6 +2050,7 @@ void SdManager::_tickMacro() {
 
 // ── listMacros ───────────────────────────────────────────────
 std::vector<String> SdManager::listMacros() const {
+    SdSpiLock _l;
     std::vector<String> result;
     if (!_mounted) return result;
     auto entries = listDir(SD_DIR_MACROS);
@@ -2040,6 +2116,7 @@ void SdManager::stopRecord() {
 
 // ── assetPath / hasAsset ─────────────────────────────────────
 String SdManager::assetPath(const String& name) const {
+    SdSpiLock _l;
     if (!_mounted) return "";
     String path = String(SD_DIR_ASSETS) + "/" + name;
     if (!_safePath(path)) return "";
@@ -2047,11 +2124,13 @@ String SdManager::assetPath(const String& name) const {
 }
 
 bool SdManager::hasAsset(const String& name) const {
+    SdSpiLock _l;
     return !assetPath(name).isEmpty();
 }
 
 // ── listDeviceProfiles ───────────────────────────────────────
 std::vector<String> SdManager::listDeviceProfiles() const {
+    SdSpiLock _l;
     std::vector<String> result;
     if (!_mounted) return result;
     auto entries = listDir(SD_DIR_DEVICES);
@@ -2064,6 +2143,7 @@ std::vector<String> SdManager::listDeviceProfiles() const {
 
 // ── readDeviceProfile ────────────────────────────────────────
 String SdManager::readDeviceProfile(const String& name) const {
+    SdSpiLock _l;
     if (!_mounted) return "";
     String path = String(SD_DIR_DEVICES) + "/" + name;
     if (!_safePath(path) || !SD.exists(path)) return "";
@@ -2078,6 +2158,7 @@ String SdManager::readDeviceProfile(const String& name) const {
 
 // ── saveDeviceProfile ────────────────────────────────────────
 bool SdManager::saveDeviceProfile(const String& name, const String& json) {
+    SdSpiLock _l;
     if (!_mounted) return false;
     String safeName = name;
     safeName.replace("/", "_"); safeName.replace(" ", "_");
@@ -2094,6 +2175,7 @@ bool SdManager::saveDeviceProfile(const String& name, const String& json) {
 
 // ── deleteDeviceProfile ──────────────────────────────────────
 bool SdManager::deleteDeviceProfile(const String& name) {
+    SdSpiLock _l;
     if (!_mounted) return false;
     String path = String(SD_DIR_DEVICES) + "/" + name;
     if (!path.endsWith(".json")) path += ".json";
@@ -2105,6 +2187,7 @@ bool SdManager::deleteDeviceProfile(const String& name) {
 
 // ── importDeviceProfileButtons ───────────────────────────────
 int SdManager::importDeviceProfileButtons(const String& name) {
+    SdSpiLock _l;
     if (!_mounted) return -1;
     String profile = readDeviceProfile(name);
     if (profile.isEmpty()) return -1;
@@ -2117,6 +2200,7 @@ int SdManager::importDeviceProfileButtons(const String& name) {
 
 // ── [#31] getProfileMeta ─────────────────────────────────────
 DeviceProfileMeta SdManager::getProfileMeta(const String& name) const {
+    SdSpiLock _l;
     DeviceProfileMeta meta;
     meta.buttonCount = 0;
     if (!_mounted) return meta;
@@ -2136,6 +2220,7 @@ DeviceProfileMeta SdManager::getProfileMeta(const String& name) const {
 
 // ── [#35] benchmark ──────────────────────────────────────────
 SdBenchmark SdManager::benchmark(size_t testBytes) {
+    SdSpiLock _l;
     SdBenchmark result = {0, 0, (uint32_t)testBytes};
     if (!_mounted) return result;
 
@@ -2176,6 +2261,7 @@ SdBenchmark SdManager::benchmark(size_t testBytes) {
 
 // ── [#38] healthStats ────────────────────────────────────────
 SdHealth SdManager::healthStats() const {
+    SdSpiLock _l;
     SdHealth h;
     h.totalBytes  = _mounted ? SD.totalBytes() : 0;
     h.usedBytes   = _mounted ? SD.usedBytes()  : 0;
@@ -2187,6 +2273,7 @@ SdHealth SdManager::healthStats() const {
 
 // ── [#41] usageJson ──────────────────────────────────────────
 String SdManager::usageJson() const {
+    SdSpiLock _l;
     uint64_t total = _mounted ? SD.totalBytes() : 0;
     uint64_t used  = _mounted ? SD.usedBytes()  : 0;
     uint64_t free_ = total - used;
@@ -2242,17 +2329,20 @@ String SdManager::fileListToJson(const std::vector<SdFileEntry>& v) const {
 
 // ── openForRead / openForWrite ───────────────────────────────
 File SdManager::openForRead(const String& path) const {
+    SdSpiLock _l;
     if (!_mounted || !_safePath(path)) return File();
     return SD.open(path, FILE_READ);
 }
 
 File SdManager::openForWrite(const String& path) {
+    SdSpiLock _l;
     if (!_mounted || !_safePath(path)) return File();
     return SD.open(path, FILE_WRITE);
 }
 
 // ── [#7] Upload helpers ───────────────────────────────────────
 bool SdManager::beginUpload(const String& path) {
+    SdSpiLock _l;
     if (!_mounted || !_safePath(path)) return false;
     if (_uploadOpen) abortUpload();
     _uploadPath = path; // [#7] store path
@@ -2262,11 +2352,13 @@ bool SdManager::beginUpload(const String& path) {
 }
 
 bool SdManager::writeUploadChunk(const uint8_t* data, size_t len) {
+    SdSpiLock _l;
     if (!_uploadOpen || !_uploadFile) return false;
     return _uploadFile.write(data, len) == len;
 }
 
 bool SdManager::endUpload() {
+    SdSpiLock _l;
     if (!_uploadOpen) return false;
     size_t sz = _uploadFile.size();
     _uploadFile.close();
@@ -2277,6 +2369,7 @@ bool SdManager::endUpload() {
 }
 
 void SdManager::abortUpload() {
+    SdSpiLock _l;
     if (_uploadFile) _uploadFile.close();
     _uploadOpen = false;
 }
@@ -2285,6 +2378,7 @@ void SdManager::abortUpload() {
 //  Feature 46: fullBackup - enumerate ALL LittleFS .json files
 // ─────────────────────────────────────────────────────────────
 bool SdManager::fullBackup(const String& tag) {
+    SdSpiLock _l;
     if (!_mounted) return false;
 
     // First do the standard backup (covers known config files + manifest)
@@ -2324,6 +2418,7 @@ bool SdManager::fullBackup(const String& tag) {
 //  Feature 47: factoryResetWithRestore
 // ─────────────────────────────────────────────────────────────
 bool SdManager::factoryResetWithRestore() {
+    SdSpiLock _l;
     if (!_mounted) return false;
 
     auto backups = listBackups();
@@ -2354,6 +2449,7 @@ bool SdManager::factoryResetWithRestore() {
 //  Feature 48: Config profiles on SD
 // ─────────────────────────────────────────────────────────────
 bool SdManager::saveConfigProfile(const String& name) {
+    SdSpiLock _l;
     if (!_mounted) return false;
 
     String dir = String(SD_DIR_PROFILES) + "/" + name;
@@ -2386,6 +2482,7 @@ bool SdManager::saveConfigProfile(const String& name) {
 }
 
 bool SdManager::loadConfigProfile(const String& name) {
+    SdSpiLock _l;
     if (!_mounted) return false;
 
     String dir = String(SD_DIR_PROFILES) + "/" + name;
@@ -2406,6 +2503,7 @@ bool SdManager::loadConfigProfile(const String& name) {
 }
 
 std::vector<String> SdManager::listConfigProfiles() const {
+    SdSpiLock _l;
     std::vector<String> result;
     if (!_mounted) return result;
     auto entries = listDir(SD_DIR_PROFILES);
@@ -2468,6 +2566,7 @@ void SdManager::_applyBootConfig() {
 //  Feature 50: Multi-device config sync
 // ─────────────────────────────────────────────────────────────
 bool SdManager::exportConfigForSync(const String& deviceName) {
+    SdSpiLock _l;
     if (!_mounted) return false;
 
     String dir = String(SD_DIR_SYNC) + "/" + deviceName;
@@ -2500,6 +2599,7 @@ bool SdManager::exportConfigForSync(const String& deviceName) {
 }
 
 bool SdManager::importConfigFromSync(const String& deviceName) {
+    SdSpiLock _l;
     if (!_mounted) return false;
 
     String dir = String(SD_DIR_SYNC) + "/" + deviceName;
@@ -2520,6 +2620,7 @@ bool SdManager::importConfigFromSync(const String& deviceName) {
 }
 
 std::vector<String> SdManager::listSyncedDevices() const {
+    SdSpiLock _l;
     std::vector<String> result;
     if (!_mounted) return result;
     auto entries = listDir(SD_DIR_SYNC);
