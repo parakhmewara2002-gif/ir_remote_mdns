@@ -13,6 +13,7 @@
 #include <LittleFS.h>
 #include <ArduinoJson.h>
 #include <ESPmDNS.h>
+#include <NetBIOS.h>
 
 WiFiManager wifiMgr;
 
@@ -345,13 +346,20 @@ void WiFiManager::startMdns() {
     } else {
         Serial.println(DEBUG_TAG " [mDNS] ERROR: MDNS.begin() failed");
     }
+
+    // NetBIOS: Windows can resolve \\IR-REMOTE or http://ir-remote
+    // without Bonjour — uses UDP port 137 (NBNS broadcast)
+    NBNS.begin(MDNS_HOSTNAME);
+    Serial.printf(DEBUG_TAG " [NBNS] Started: http://%s  (Windows NetBIOS)\n",
+                  MDNS_HOSTNAME);
 }
 
 void WiFiManager::stopMdns() {
     if (!_mdnsRunning) return;
     MDNS.end();
+    NBNS.end();
     _mdnsRunning = false;
-    Serial.println(DEBUG_TAG " [mDNS] Stopped (STA disconnected)");
+    Serial.println(DEBUG_TAG " [mDNS+NBNS] Stopped (STA disconnected)");
 }
 
 // ── Status helpers ────────────────────────────────────────────

@@ -57,7 +57,7 @@ role-7 "Proxy" button + control panel in the BLE tab — open work.
 | Auth (login / logout / password / config) | ✅ | ✅ | Bearer-token; can be disabled via `/api/v1/auth/config` |
 | Rules engine | ✅ | ✅ | Create / edit / fire / toggle / delete + preset save/load/import/export |
 | Scheduler | ✅ | ✅ | NTP-driven, timezone-aware |
-| mDNS | ✅ | n/a | Advertises `ir-remote.local` once STA gets an IP |
+| mDNS + NetBIOS | ✅ | n/a | `ir-remote.local` (mDNS) + `http://ir-remote` (NetBIOS/NBNS — Windows without Bonjour) |
 
 Legend: ✅ fully wired · ⚠️ partial · ❌ not yet built
 
