@@ -293,20 +293,21 @@ void WatchdogManager::_checkTemperature() {
 // ─────────────────────────────────────────────────────────────
 void WatchdogManager::_checkConnectivity() {
 
-    // C-02 FIX: guard against double-spawn.
-    // Without this flag, every 60-second tick unconditionally spawns a new
-    // wdt_ping task. If an HTTP HEAD to Google stalls (slow DNS, captive portal,
-    // flaky network), the previous task is still alive when the next tick fires.
-    // Over hours of uptime this accumulates stalled tasks each holding 4 KB of
-    // FreeRTOS heap, eventually exhausting available memory.
-    if (_pingActive) return;
-    _pingActive = true;
+    // C-02 + ATOMIC FIX: atomic test-and-set replaces the racy
+    // `if (_pingActive) return; _pingActive = true;` pair. On dual-core
+    // ESP32 the previous code could observe false on core 1 while core 0
+    // had just set true, spawning a second wdt_ping task that leaks 6 KB.
+    bool expected = false;
+    if (!_pingActive.compare_exchange_strong(expected, true)) {
+        // already active — skip this tick
+        return;
+    }
 
     // Spawn a short-lived task - avoids blocking loop() for up to 5 s.
     // The task writes _internetOk and self-deletes.
     struct PingArgs { WatchdogManager* self; };
     auto* args = new (std::nothrow) PingArgs{this};
-    if (!args) { _pingActive = false; return; }  // OOM - skip this ping cycle
+    if (!args) { _pingActive.store(false); return; }  // OOM - skip this ping cycle
 
     BaseType_t ok = xTaskCreate([](void* p) {
         auto* a = static_cast<PingArgs*>(p);
@@ -329,7 +330,7 @@ void WatchdogManager::_checkConnectivity() {
                          reachable ? "INTERNET_OK" : "INTERNET_DOWN",
                          String("HTTP code: ") + code, !reachable);
         }
-        wdt->_pingActive = false;   // C-02 FIX: clear flag before self-delete
+        wdt->_pingActive.store(false);   // C-02 FIX: clear flag before self-delete
         vTaskDelete(NULL);
     // FIX: stack raised from 4096 to 6144.
     // HTTPClient on ESP32 Arduino requires DNS resolution + TCP handshake + HTTP
@@ -340,7 +341,7 @@ void WatchdogManager::_checkConnectivity() {
 
     if (ok != pdPASS) {
         delete args;
-        _pingActive = false;   // C-02 FIX: clear flag so next tick can retry
+        _pingActive.store(false);   // C-02 FIX: clear flag so next tick can retry
         Serial.println(WDT_TAG " WARNING: could not create ping task (low heap?)");
     }
 }

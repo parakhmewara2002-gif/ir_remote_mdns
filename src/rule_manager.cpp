@@ -48,7 +48,11 @@ void RuleManager::loop() {
     if (_pending.empty()) return;
     unsigned long now = millis();
     for (auto it = _pending.begin(); it != _pending.end(); ) {
-        if (now >= it->fireAt) {
+        // MILLIS-WRAP FIX: `now >= fireAt` breaks every ~49 days when
+        // millis() wraps to 0. A scheduled action set just before the
+        // wrap would fire immediately on wrap, then again 49 days later.
+        // Signed-difference comparison is wrap-safe for spans < 24 days.
+        if ((long)(now - it->fireAt) >= 0) {
             _executeAction(it->step, it->ruleId);
             it = _pending.erase(it);
         } else {

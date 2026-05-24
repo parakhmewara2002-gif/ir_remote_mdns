@@ -268,17 +268,29 @@ bool IRTransmitter::transmit(const IRButton& btn) {
 
 // ── transmitOn (single emitter, blocking) ─────────────────────
 bool IRTransmitter::transmitOn(uint8_t idx, const IRButton& btn) {
-    if (idx >= IR_MAX_EMITTERS || !_senders[idx]) {
-        Serial.printf(DEBUG_TAG " transmitOn: emitter[%d] not active\n", idx);
+    if (idx >= IR_MAX_EMITTERS) {
+        Serial.printf(DEBUG_TAG " transmitOn: emitter[%d] out of range\n", idx);
         return false;
     }
     if (!btn.isValid()) return false;
     if (!_txMutex) return false;
     if (xSemaphoreTake(_txMutex, pdMS_TO_TICKS(2000)) != pdTRUE) return false;
 
+    // UAF FIX: previously checked `!_senders[idx]` BEFORE acquiring the
+    // mutex. reconfigure() (which deletes senders) takes the same mutex,
+    // so between the unlocked null-check and the deref we could read a
+    // freed pointer if reconfigure ran in between. The check is now
+    // inside the critical section.
+    IRsend* sender = _senders[idx];
+    if (!sender) {
+        xSemaphoreGive(_txMutex);
+        Serial.printf(DEBUG_TAG " transmitOn: emitter[%d] not active\n", idx);
+        return false;
+    }
+
     irReceiver.pause();
     delay(IR_PRE_TX_QUIET_MS);
-    bool ok = doTransmit(_senders[idx], btn);
+    bool ok = doTransmit(sender, btn);
     delay(IR_POST_TX_SETTLE_MS);
     irReceiver.resume();
 

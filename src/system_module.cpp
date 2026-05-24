@@ -210,8 +210,15 @@ void SystemModule::_saveConfig() const {
 
 // ─────────────────────────────────────────────────────────────
 uint32_t SystemModule::addScheduleTask(SysScheduleTask& task) {
-    static uint32_t nextId = 1;
-    task.id = nextId++;
+    // ID FIX: the previous `static uint32_t nextId = 1` reset to 1 on every
+    // boot, so the first task added after reboot collided with whichever
+    // persisted task had id=1 — delete/toggle by id would then act on the
+    // wrong row. Now we scan the currently loaded tasks and pick max+1.
+    uint32_t nextId = 1;
+    for (const auto& t : _schedTasks) {
+        if (t.id >= nextId) nextId = t.id + 1;
+    }
+    task.id = nextId;
     _schedTasks.push_back(task);
     _saveScheduleTasks();
     return task.id;

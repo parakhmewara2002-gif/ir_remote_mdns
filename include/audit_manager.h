@@ -19,6 +19,8 @@
 #include <ArduinoJson.h>
 #include <LittleFS.h>
 #include <vector>
+#include <freertos/FreeRTOS.h>
+#include <freertos/semphr.h>  // MUTEX FIX: guard _entries vector mutations
 
 #define AUDIT_LOG_FILE      "/audit_log.json"
 #define AUDIT_MAX_ENTRIES   200     // circular - oldest dropped when full
@@ -123,8 +125,14 @@ private:
     bool        _sdOverflow = false;    // Feature 36: write overflow to SD
     bool        _sdMirror   = false;    // Feature 38: mirror all entries to SD
 
+    // MUTEX FIX: log() is called from the loop task, web handlers, the
+    // WDT ping task, and indirectly from sdMgr.log() — all push_back on
+    // _entries with no synchronisation. Eventually corrupts the vector
+    // and crashes. _mux guards every mutator/iterator.
+    SemaphoreHandle_t _mux = nullptr;
+
     void        _load();
-    void        _addEntry(AuditEntry& e);
+    void        _addEntry(AuditEntry& e);    // caller must hold _mux
     String      _sourceToStr(AuditSource s) const;
     String      _buildTimeStr() const;
     uint32_t    _getTimestamp() const;

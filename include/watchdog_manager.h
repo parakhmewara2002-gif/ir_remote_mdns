@@ -12,6 +12,7 @@
 #include <esp_system.h>
 #include <esp_idf_version.h>
 #include <vector>
+#include <atomic>  // ATOMIC FIX: _pingActive double-spawn guard
 
 #define WDT_CFG_FILE              "/wdt_config.json"
 #define WDT_CRASH_FILE            "/crash_log.json"
@@ -119,7 +120,12 @@ private:
     unsigned long _lastModCheck;
     bool          _internetOk;
     bool          _wifiWasConnected;
-    volatile bool _pingActive;         // C-02: guard against double ping-task spawn
+    // ATOMIC FIX: was `volatile bool`. `volatile` is NOT atomic in C++ —
+    // the read-modify-write between `if (_pingActive) return;` and
+    // `_pingActive = true;` was racy across the dual-core ESP32, allowing
+    // the double-ping-task spawn this flag is supposed to prevent. Now
+    // uses test-and-set via std::atomic<bool>::compare_exchange_strong.
+    std::atomic<bool> _pingActive{false};   // C-02: double ping-task guard
     WdtBootState  _bootState;
     WdtPerfMode   _perfMode;
     bool          _thermalThrottled;

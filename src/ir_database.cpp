@@ -225,19 +225,8 @@ uint8_t IRDatabase::_rawCount() const {
 
 // ── add ──────────────────────────────────────────────────────
 uint32_t IRDatabase::add(IRButton& btn) {
-    if ((int)_buttons.size() >= MAX_BUTTONS) {
-        Serial.println(DEBUG_TAG " ERROR: MAX_BUTTONS limit reached.");
-        return 0;
-    }
     if (!btn.isValid()) {
         Serial.println(DEBUG_TAG " ERROR: Button failed validation.");
-        return 0;
-    }
-
-    // Fix 3: RAW memory guard - cap RAW buttons independently
-    if (btn.protocol == IRProtocol::RAW && _rawCount() >= MAX_RAW_BUTTONS) {
-        Serial.printf(DEBUG_TAG " ERROR: RAW button limit (%d) reached - "
-                      "delete an existing RAW button first.\n", MAX_RAW_BUTTONS);
         return 0;
     }
 
@@ -254,17 +243,34 @@ uint32_t IRDatabase::add(IRButton& btn) {
         }
     }
 
-    // Assign ID under lock (cheap integer op only)
-    uint32_t newid;
-    xSemaphoreTake(_mux, portMAX_DELAY);
-    newid = newId();
-    xSemaphoreGive(_mux);
-    btn.id = newid;
-
-    // push_back OUTSIDE spinlock - IRButton contains String/vector
-    // whose heap allocations must not run with interrupts disabled.
-    _buttons.push_back(btn);
-    _rebuildIndex();   // FIX: O(1) lookups valid immediately after add
+    // MUTEX FIX: all reads of _buttons (size, _rawCount) plus the mutation
+    // (push_back + rebuildIndex) happen under one critical section so a
+    // reader holding _mux can't observe a torn vector. _mux is a FreeRTOS
+    // mutex (not portMUX); heap allocs are safe to perform under it.
+    bool full = false, rawFull = false;
+    {
+        xSemaphoreTake(_mux, portMAX_DELAY);
+        if ((int)_buttons.size() >= MAX_BUTTONS) {
+            full = true;
+        } else if (btn.protocol == IRProtocol::RAW &&
+                   _rawCount() >= MAX_RAW_BUTTONS) {
+            rawFull = true;
+        } else {
+            btn.id = newId();
+            _buttons.push_back(btn);
+            _rebuildIndex();
+        }
+        xSemaphoreGive(_mux);
+    }
+    if (full) {
+        Serial.println(DEBUG_TAG " ERROR: MAX_BUTTONS limit reached.");
+        return 0;
+    }
+    if (rawFull) {
+        Serial.printf(DEBUG_TAG " ERROR: RAW button limit (%d) reached - "
+                      "delete an existing RAW button first.\n", MAX_RAW_BUTTONS);
+        return 0;
+    }
 
     // Fix 2: mark dirty instead of saving immediately
     _markDirty();
@@ -306,20 +312,25 @@ bool IRDatabase::update(uint32_t id, const IRButton& updated) {
 // ── remove ───────────────────────────────────────────────────
 bool IRDatabase::remove(uint32_t id) {
     int foundIdx = -1;
+    // MUTEX FIX: hold _mux across the whole mutation (search + swap +
+    // pop_back + rebuildIndex). Previous version released after the swap,
+    // leaving pop_back/_rebuildIndex running unlocked while readers held
+    // the same _mux.
     xSemaphoreTake(_mux, portMAX_DELAY);
     for (int i = 0; i < (int)_buttons.size(); ++i) {
         if (_buttons[i].id == id) { foundIdx = i; break; }
     }
-    if (foundIdx >= 0)
+    if (foundIdx >= 0) {
         std::swap(_buttons[foundIdx], _buttons.back());
+        _buttons.pop_back();
+        _rebuildIndex();
+    }
     xSemaphoreGive(_mux);
 
     if (foundIdx < 0) {
         Serial.printf(DEBUG_TAG " remove: id=%u not found.\n", id);
         return false;
     }
-    _buttons.pop_back();
-    _rebuildIndex();   // FIX: stale index entry removed
 
     // Fix 2: mark dirty instead of saving immediately
     _markDirty();
@@ -378,13 +389,19 @@ uint32_t IRDatabase::autoSaveReceived(IRButton& btn) {
 
     // RAW signals have code == 0 - each capture is unique by
     // definition, so skip the duplicate check for RAW.
+    // MUTEX FIX: iterate under _mux. Previously the IR-receiver callback
+    // could be reading _buttons while an API task was reallocating it.
     if (btn.protocol != IRProtocol::RAW) {
+        xSemaphoreTake(_mux, portMAX_DELAY);
+        bool dup = false;
         for (const auto& b : _buttons) {
             if (b.protocol == btn.protocol && b.code == btn.code) {
-                // Duplicate - silently ignore
-                return 0;
+                dup = true;
+                break;
             }
         }
+        xSemaphoreGive(_mux);
+        if (dup) return 0;
     }
 
     uint32_t id = add(btn);

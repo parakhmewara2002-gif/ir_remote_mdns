@@ -14,7 +14,13 @@ AuditManager auditMgr;
 
 // ─────────────────────────────────────────────────────────────
 AuditManager::AuditManager()
-    : _nextId(1), _totalLogged(0), _dirty(false), _lastSave(0) {}
+    : _nextId(1), _totalLogged(0), _dirty(false), _lastSave(0) {
+    // MUTEX FIX: create the entries mutex up front. Static-init order:
+    // global auditMgr constructs before main(), and FreeRTOS APIs for
+    // mutex creation are safe to call this early on arduino-esp32 (the
+    // RTOS is already up).
+    _mux = xSemaphoreCreateMutex();
+}
 
 // ─────────────────────────────────────────────────────────────
 void AuditManager::begin() {
@@ -39,7 +45,10 @@ void AuditManager::log(AuditSource source,
                         const String& detail,
                         bool success) {
     AuditEntry e;
+    // MUTEX FIX: _nextId increment must also be guarded.
+    if (_mux) xSemaphoreTake(_mux, portMAX_DELAY);
     e.id        = _nextId++;
+    if (_mux) xSemaphoreGive(_mux);
     e.timestamp = _getTimestamp();
     e.timeStr   = _buildTimeStr();
     e.source    = source;
@@ -50,7 +59,9 @@ void AuditManager::log(AuditSource source,
                     : detail;
     e.success   = success;
 
+    if (_mux) xSemaphoreTake(_mux, portMAX_DELAY);
     _addEntry(e);
+    if (_mux) xSemaphoreGive(_mux);
 
     Serial.printf(AUDIT_TAG " [%s] %s - %s (%s)\n",
                   e.sourceStr.c_str(),
@@ -166,10 +177,13 @@ String AuditManager::toJson(int sourceFilter, size_t limit) const {
 //  Clear
 // ─────────────────────────────────────────────────────────────
 void AuditManager::clear() {
+    // MUTEX FIX: guard the vector clear; other tasks may be iterating.
+    if (_mux) xSemaphoreTake(_mux, portMAX_DELAY);
     _entries.clear();
     _totalLogged = 0;
     _nextId = 1;
     _dirty = true;
+    if (_mux) xSemaphoreGive(_mux);
     save();
     Serial.println(AUDIT_TAG " Log cleared");
 }
