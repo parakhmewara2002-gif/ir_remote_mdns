@@ -64,6 +64,7 @@ public:
     void   _onAudioState(bool playing);
     void   _onTrackChanged(const char* title, const char* artist, uint32_t duration);
     void   _onVolumeChanged(uint8_t v);
+    void   _onPeerName(const char* name);
 
 private:
     BtA2dpConfig _cfg;

@@ -20,7 +20,7 @@ static void _gapCb(esp_bt_gap_cb_event_t ev, esp_bt_gap_cb_param_t* p) {
     if (!_self) return;
     if (ev == ESP_BT_GAP_READ_REMOTE_NAME_EVT) {
         if (p->read_rmt_name.stat == ESP_BT_STATUS_SUCCESS)
-            _self->_peerName = String((char*)p->read_rmt_name.rmt_name);
+            _self->_onPeerName((char*)p->read_rmt_name.rmt_name);
     }
 }
 
@@ -235,7 +235,7 @@ void BtA2dpModule::_onConnectionState(bool connected, const uint8_t* addr) {
         _peerAddr = String(buf);
         _state = A2dpState::CONNECTED;
         Serial.printf("[A2DP] connected: %s\n", buf);
-        esp_bt_gap_read_remote_name(addr);
+        esp_bt_gap_read_remote_name(const_cast<uint8_t*>(addr));
         // Request track metadata
         esp_avrc_ct_send_metadata_cmd(1, ESP_AVRC_MD_ATTR_TITLE | ESP_AVRC_MD_ATTR_ARTIST);
     } else {
@@ -254,6 +254,10 @@ void BtA2dpModule::_onTrackChanged(const char* title, const char* artist, uint32
     if (title)  _trackTitle  = String(title);
     if (artist) _trackArtist = String(artist);
     if (dur)    _trackDuration = dur;
+}
+
+void BtA2dpModule::_onPeerName(const char* name) {
+    if (name) _peerName = String(name);
 }
 
 void BtA2dpModule::_onVolumeChanged(uint8_t v) {
