@@ -27,6 +27,9 @@
 #include <LittleFS.h>
 #include <vector>
 #include <map>
+#include <freertos/FreeRTOS.h>
+#include <freertos/semphr.h>  // PROXY FIX: _proxyMutex protects pointers
+                              // shared between host BT task and API task
 
 // Arduino's esp32-hal-gpio.h #defines DISABLED 0x00 as a pinMode() value.
 // The project doesn't actually call pinMode(p, DISABLED) anywhere, so we
@@ -301,6 +304,14 @@ private:
     void*         _proxyBattChr      = nullptr;  // phone-side Battery characteristic
     void*         _proxyTempChr      = nullptr;  // phone-side Temp characteristic
     bool          _proxyPhoneConnected = false;
+    // PROXY FIX: guards _proxy*Chr / _proxyPhoneServer / _proxyWatchClient
+    // against torn reads. proxyStop() (called from API task) sets them to
+    // nullptr while _proxyForward{HR,Battery,Temp} (called from the BLE
+    // host task) deref them - without this mutex the forwarders could see
+    // a half-cleared pointer and crash, or worse use-after-free if the
+    // host task had already read the pointer just before proxyStop freed
+    // the underlying server. Recursive mutex because some callers nest.
+    SemaphoreHandle_t _proxyMutex = nullptr;
     unsigned long _proxyLastRetry    = 0;
     uint8_t       _proxyRetryCount   = 0;
 

@@ -141,6 +141,9 @@ void BluetoothModule::_onTempNotify(void* chr, uint8_t* data, size_t len, bool n
 // ─────────────────────────────────────────────────────────────
 void BluetoothModule::begin() {
     s_bt = this;
+    // PROXY FIX: create the proxy pointer-guard mutex once, up front, so
+    // _proxyForward* and proxyStop() can both rely on it being available.
+    if (!_proxyMutex) _proxyMutex = xSemaphoreCreateMutex();
     _loadConfig();
     _loadBonds();   // Feature #8: load bonded devices from LittleFS
     if (_cfg.enabled) {
@@ -1138,27 +1141,44 @@ void BluetoothModule::_proxyOnTempNotify(void* chr,
 }
 
 // ── Forward HR bytes to phone ─────────────────────────────────
+// PROXY FIX: each forwarder snapshots its target pointer under
+// _proxyMutex so proxyStop() (which sets the pointer to nullptr after
+// destroying the underlying BLEServer) can't race with the deref. The
+// callback fires from the BT host task; proxyStop runs from the API
+// task. Previously a stop mid-notify would crash on use-after-free.
 void BluetoothModule::_proxyForwardHR(uint8_t* data, size_t len) {
-    if (!_proxyPhoneConnected || !_proxyHrChr) return;
-    BLECharacteristic* chr =
-        reinterpret_cast<BLECharacteristic*>(_proxyHrChr);
+    BLECharacteristic* chr = nullptr;
+    if (_proxyMutex) xSemaphoreTake(_proxyMutex, portMAX_DELAY);
+    if (_proxyPhoneConnected && _proxyHrChr) {
+        chr = reinterpret_cast<BLECharacteristic*>(_proxyHrChr);
+    }
+    if (_proxyMutex) xSemaphoreGive(_proxyMutex);
+    if (!chr) return;
     chr->setValue(data, len);
     chr->notify();
 }
 
 void BluetoothModule::_proxyForwardBattery(uint8_t level) {
-    if (!_proxyPhoneConnected || !_proxyBattChr) return;
-    _proxyWatchData.battery = level;
-    BLECharacteristic* chr =
-        reinterpret_cast<BLECharacteristic*>(_proxyBattChr);
+    BLECharacteristic* chr = nullptr;
+    if (_proxyMutex) xSemaphoreTake(_proxyMutex, portMAX_DELAY);
+    if (_proxyPhoneConnected && _proxyBattChr) {
+        _proxyWatchData.battery = level;
+        chr = reinterpret_cast<BLECharacteristic*>(_proxyBattChr);
+    }
+    if (_proxyMutex) xSemaphoreGive(_proxyMutex);
+    if (!chr) return;
     chr->setValue(&level, 1);
     chr->notify();
 }
 
 void BluetoothModule::_proxyForwardTemp(uint8_t* data, size_t len) {
-    if (!_proxyPhoneConnected || !_proxyTempChr) return;
-    BLECharacteristic* chr =
-        reinterpret_cast<BLECharacteristic*>(_proxyTempChr);
+    BLECharacteristic* chr = nullptr;
+    if (_proxyMutex) xSemaphoreTake(_proxyMutex, portMAX_DELAY);
+    if (_proxyPhoneConnected && _proxyTempChr) {
+        chr = reinterpret_cast<BLECharacteristic*>(_proxyTempChr);
+    }
+    if (_proxyMutex) xSemaphoreGive(_proxyMutex);
+    if (!chr) return;
     chr->setValue(data, len);
     chr->indicate();
 }
@@ -1187,22 +1207,25 @@ void BluetoothModule::_proxyConnectWatch() {
         return;
     }
 
+    // PROXY FIX: publish watch client under the mutex so proxyStop and
+    // the loop's battery-poll path see a consistent view.
+    if (_proxyMutex) xSemaphoreTake(_proxyMutex, portMAX_DELAY);
     _proxyWatchClient = client;
+    if (_proxyMutex) xSemaphoreGive(_proxyMutex);
     _proxyWatchData.address   = _proxyCfg.watchAddress;
     _proxyWatchData.connected = true;
     _proxyWatchData.lastUpdate= millis();
     _proxyRetryCount = 0;
 
-    // Read watch device name
+    // Read watch device name (informational only — the spoof name was
+    // committed in proxyStart() and can no longer be changed without
+    // tearing the stack down again).
     BLERemoteService* svc =
         client->getService(BLEUUID(UUID_SVC_GENERIC_ACCESS));
     if (svc) {
         auto* chr = svc->getCharacteristic(BLEUUID(UUID_CHR_DEVICE_NAME));
         if (chr && chr->canRead()) {
             _proxyWatchData.name = chr->readValue().c_str();
-            // Use watch name as spoof name if not set
-            if (_proxyCfg.spoofName.isEmpty())
-                _proxyCfg.spoofName = _proxyWatchData.name;
         }
     }
 
@@ -1272,65 +1295,76 @@ void BluetoothModule::_proxyConnectWatch() {
 }
 
 // ── Step 3: Setup fake watch server (peripheral side) ─────────
+// PROXY FIX: previously this function created the server + services +
+// characteristics, then called BLEDevice::deinit(false) followed by
+// init(spoofName) to change the advertised name — but never rebuilt
+// the server. Every _proxy*Chr pointer was left dangling into freed
+// memory, and the active watch BLEClient was also freed by deinit.
+// The first forwarded notify after a phone connected dereferenced a
+// dead pointer and crashed the device.
+//
+// New flow: spoof name is committed in proxyStart() BEFORE any server
+// or client objects exist, so this function only creates the server,
+// services, characteristics, and starts advertising — no destructive
+// re-init. The _proxy*Chr pointers remain valid for the whole proxy
+// session.
 void BluetoothModule::_proxySetupPhoneServer() {
+    String advName = _proxyCfg.spoofName.length()
+                     ? _proxyCfg.spoofName : "ESP32-Watch";
     Serial.printf("[PROXY] Starting fake-watch server: \"%s\"\n",
-                  _proxyCfg.spoofName.c_str());
+                  advName.c_str());
 
     BLEServer* srv = BLEDevice::createServer();
     static ProxyServerCb srvCb;
     srvCb.mod = this;
     srv->setCallbacks(&srvCb);
-    _proxyPhoneServer = srv;
 
-    // ── Mirror: Heart Rate Service ────────────────────────────
+    // Build services BEFORE publishing the chr pointers so anything
+    // racing on the mutex sees consistent state.
+    BLECharacteristic* hrChr   = nullptr;
+    BLECharacteristic* battChr = nullptr;
+    BLECharacteristic* tempChr = nullptr;
+
     if (_proxyCfg.forwardHR) {
         BLEService* hrSvc = srv->createService(
             BLEUUID(UUID_SVC_HEART_RATE));
-        BLECharacteristic* hrChr = hrSvc->createCharacteristic(
+        hrChr = hrSvc->createCharacteristic(
             BLEUUID(UUID_CHR_HR_MEASUREMENT),
             BLECharacteristic::PROPERTY_NOTIFY);
-        // CCCD descriptor so phone can subscribe
         hrChr->addDescriptor(new BLE2902());
         hrSvc->start();
-        _proxyHrChr = hrChr;
     }
 
-    // ── Mirror: Battery Service ───────────────────────────────
     if (_proxyCfg.forwardBatt) {
         BLEService* battSvc = srv->createService(
             BLEUUID(UUID_SVC_BATTERY));
-        BLECharacteristic* battChr = battSvc->createCharacteristic(
+        battChr = battSvc->createCharacteristic(
             BLEUUID(UUID_CHR_BATTERY_LEVEL),
             BLECharacteristic::PROPERTY_READ |
             BLECharacteristic::PROPERTY_NOTIFY);
         battChr->addDescriptor(new BLE2902());
-        // Set initial value from watch read
         uint8_t batt = (uint8_t)(_proxyWatchData.battery >= 0
                                   ? _proxyWatchData.battery : 0);
         battChr->setValue(&batt, 1);
         battSvc->start();
-        _proxyBattChr = battChr;
     }
 
-    // ── Mirror: Health Thermometer ────────────────────────────
     if (_proxyCfg.forwardTemp) {
         BLEService* tempSvc = srv->createService(
             BLEUUID(UUID_SVC_HEALTH_THERM));
-        BLECharacteristic* tempChr = tempSvc->createCharacteristic(
+        tempChr = tempSvc->createCharacteristic(
             BLEUUID("00002a1c-0000-1000-8000-00805f9b34fb"),
             BLECharacteristic::PROPERTY_INDICATE);
         tempChr->addDescriptor(new BLE2902());
         tempSvc->start();
-        _proxyTempChr = tempChr;
     }
 
-    // ── Device Info (spoof as watch) ──────────────────────────
+    // Device Info (spoof as watch)
     BLEService* infoSvc = srv->createService(
         BLEUUID(UUID_SVC_DEVICE_INFO));
     BLECharacteristic* mfrChr = infoSvc->createCharacteristic(
         BLEUUID(UUID_CHR_MANUFACTURER),
         BLECharacteristic::PROPERTY_READ);
-    // Copy manufacturer from real watch if known
     String mfr = _proxyWatchData.manufacturer.length()
                  ? _proxyWatchData.manufacturer : "ESP32-Proxy";
     mfrChr->setValue(mfr.c_str());
@@ -1341,19 +1375,16 @@ void BluetoothModule::_proxySetupPhoneServer() {
                      ? _proxyWatchData.model.c_str() : "v1.0");
     infoSvc->start();
 
-    // ── Advertise with watch name ─────────────────────────────
-    // Override BLE device name to match watch
-    BLEDevice::deinit(false);
-    String advName = _proxyCfg.spoofName.length()
-                     ? _proxyCfg.spoofName : "ESP32-Watch";
-    BLEDevice::init(advName.c_str());
-    BLEDevice::setPower(ESP_PWR_LVL_P9);
+    // Publish the chr pointers atomically — only after all services have
+    // .start()ed so any notify that races in immediately is well-formed.
+    if (_proxyMutex) xSemaphoreTake(_proxyMutex, portMAX_DELAY);
+    _proxyPhoneServer = srv;
+    _proxyHrChr       = hrChr;
+    _proxyBattChr     = battChr;
+    _proxyTempChr     = tempChr;
+    if (_proxyMutex) xSemaphoreGive(_proxyMutex);
 
-    // Rebuild server after deinit (deinit invalidates handles)
-    // NOTE: Re-create server and services after re-init
-    // This re-init trick makes the phone see the spoof name
-    // in the advertisement packet (Generic Access name field)
-
+    // Start advertising with the spoof name (set during proxyStart).
     BLEAdvertising* adv = BLEDevice::getAdvertising();
     if (_proxyCfg.forwardHR)
         adv->addServiceUUID(BLEUUID(UUID_SVC_HEART_RATE));
@@ -1379,26 +1410,32 @@ void BluetoothModule::_proxySetupPhoneServer() {
 
 // ── Proxy state machine — called every loop() ─────────────────
 void BluetoothModule::_proxyLoop() {
-    // Periodically push battery update to phone
+    // Periodically push battery update to phone.
+    // PROXY FIX: snapshot _proxyWatchClient and the connection state
+    // under the mutex so proxyStop() can't free the client mid-readValue.
     static unsigned long _lastBattUpdate = 0;
+    BLEClient* c = nullptr;
+    bool       hasBattChr = false;
+    if (_proxyMutex) xSemaphoreTake(_proxyMutex, portMAX_DELAY);
     if (_proxyPhoneConnected && _proxyBattChr &&
-        millis() - _lastBattUpdate > 30000) {
+        millis() - _lastBattUpdate > 30000 && _proxyWatchClient) {
+        c          = reinterpret_cast<BLEClient*>(_proxyWatchClient);
+        hasBattChr = true;
+    }
+    if (_proxyMutex) xSemaphoreGive(_proxyMutex);
+
+    if (hasBattChr && c) {
         _lastBattUpdate = millis();
-        // Re-read battery from watch if still connected
-        if (_proxyWatchClient) {
-            BLEClient* c =
-                reinterpret_cast<BLEClient*>(_proxyWatchClient);
-            if (c->isConnected()) {
-                BLERemoteService* svc =
-                    c->getService(BLEUUID(UUID_SVC_BATTERY));
-                if (svc) {
-                    auto* chr = svc->getCharacteristic(
-                        BLEUUID(UUID_CHR_BATTERY_LEVEL));
-                    if (chr && chr->canRead()) {
-                        std::string v = chr->readValue();
-                        if (!v.empty())
-                            _proxyForwardBattery((uint8_t)v[0]);
-                    }
+        if (c->isConnected()) {
+            BLERemoteService* svc =
+                c->getService(BLEUUID(UUID_SVC_BATTERY));
+            if (svc) {
+                auto* chr = svc->getCharacteristic(
+                    BLEUUID(UUID_CHR_BATTERY_LEVEL));
+                if (chr && chr->canRead()) {
+                    std::string v = chr->readValue();
+                    if (!v.empty())
+                        _proxyForwardBattery((uint8_t)v[0]);
                 }
             }
         }
@@ -1431,7 +1468,26 @@ bool BluetoothModule::proxyStart(const ProxyConfig& cfg) {
     _proxyState     = ProxyState::SCANNING;
     _cfg.role       = BleRole::PROXY;
 
-    _initStack();
+    // PROXY FIX: commit the spoof name BEFORE any BLE objects exist, so
+    // _proxySetupPhoneServer doesn't have to do a destructive deinit
+    // later. If the user left spoofName blank the placeholder is used;
+    // we no longer try to read the watch's GAP name and feed it back
+    // into the local BLE stack mid-session (that required a deinit
+    // which was the root cause of the previous use-after-free).
+    String spoofName = _proxyCfg.spoofName.length()
+                       ? _proxyCfg.spoofName : "ESP32-Watch";
+    if (BLEDevice::getInitialized() && _cfg.deviceName != spoofName) {
+        // Stack is up under a different name. Tear it down BEFORE any
+        // server/client/characteristic exists so nothing is invalidated.
+        BLEDevice::deinit(false);
+    }
+    if (!BLEDevice::getInitialized()) {
+        BLEDevice::init(spoofName.c_str());
+        BLEDevice::setPower(ESP_PWR_LVL_P9);
+    }
+    _cfg.deviceName    = spoofName;     // persist so _initStack stays in sync
+    _proxyCfg.spoofName = spoofName;
+
     Serial.println("[PROXY] Starting — connecting to watch first");
 
     if (_wsBroadcastCb)
@@ -1446,24 +1502,33 @@ bool BluetoothModule::proxyStart(const ProxyConfig& cfg) {
 void BluetoothModule::proxyStop() {
     Serial.println("[PROXY] Stopping proxy");
 
-    // Disconnect watch
-    if (_proxyWatchClient) {
-        BLEClient* c =
-            reinterpret_cast<BLEClient*>(_proxyWatchClient);
-        if (c->isConnected()) c->disconnect();
-        delete c;
-        _proxyWatchClient = nullptr;
-    }
-
-    // Stop phone server advertising
-    BLEDevice::stopAdvertising();
+    // PROXY FIX: clear pointer state under the mutex BEFORE freeing the
+    // underlying BLE objects. A forwarder running on the BT host task at
+    // this exact moment will now see nullptr and bail out — before this
+    // ordering the forwarder could read a still-valid pointer, then we
+    // would free the BLEServer it pointed at while the chr->notify() was
+    // mid-flight. The actual delete of the watch client happens AFTER we
+    // release the mutex because BLEClient::disconnect blocks for ~50 ms.
+    void* watchClient = nullptr;
+    if (_proxyMutex) xSemaphoreTake(_proxyMutex, portMAX_DELAY);
+    watchClient          = _proxyWatchClient;
+    _proxyWatchClient    = nullptr;
     _proxyPhoneConnected = false;
     _proxyPhoneServer    = nullptr;
     _proxyHrChr          = nullptr;
     _proxyBattChr        = nullptr;
     _proxyTempChr        = nullptr;
-    _proxyState          = ProxyState::IDLE;
-    _proxyWatchData      = WatchData{};
+    if (_proxyMutex) xSemaphoreGive(_proxyMutex);
+
+    if (watchClient) {
+        BLEClient* c = reinterpret_cast<BLEClient*>(watchClient);
+        if (c->isConnected()) c->disconnect();
+        delete c;
+    }
+
+    BLEDevice::stopAdvertising();
+    _proxyState     = ProxyState::IDLE;
+    _proxyWatchData = WatchData{};
 
     if (_wsBroadcastCb)
         _wsBroadcastCb(
