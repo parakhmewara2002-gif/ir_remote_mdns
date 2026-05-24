@@ -43,8 +43,8 @@ role-7 "Proxy" button + control panel in the BLE tab — open work.
 | IR receiver / transmitter | ✅ | ✅ | 116 protocols enabled, raw capture + replay, groups, scheduler |
 | AC mains-detector (non-contact) | ✅ | ✅ | Live RMS poll, threshold + hysteresis, buzzer alert, WS events |
 | BLE scanner / central / peripheral / HID-KB / HID-Media / HID-Gamepad | ✅ | ✅ | Roles 1-6 wired end-to-end |
-| BLE proxy (role 7) | ✅ | ⚠️ partial | API works; needs UI button in BLE tab |
-| BLE bonds / multi-connect / time-sync | ✅ | ❌ | Backend implemented, UI pending |
+| BLE proxy (role 7) | ✅ | ✅ | Watch address, spoof name, HR/batt/temp forward, start/stop panel |
+| BLE bonds / multi-connect / time-sync | ✅ | ✅ | Bond list + delete, multi-slot table, time-sync toggle |
 | NFC (PN532) | ✅ | ✅ | Read / save / clone / emulate, dictionary attack, SD library |
 | RFID (MFRC522) | ✅ | ✅ | Read / write / emulate, allowlist + per-card macros (needs UI) |
 | Sub-GHz (CC1101) | ✅ | ✅ | Capture, save, replay, raw modulation, SD signals |
@@ -55,7 +55,7 @@ role-7 "Proxy" button + control panel in the BLE tab — open work.
 | Audit log | ✅ | ✅ | RAM ring + LittleFS rotation; SD mirror toggleable |
 | Watchdog | ✅ | ✅ | Crash log persisted on LittleFS |
 | Auth (login / logout / password / config) | ✅ | ✅ | Bearer-token; can be disabled via `/api/v1/auth/config` |
-| Rules engine | ✅ | ⚠️ partial | Create / fire / toggle / delete work; edit + preset import/export need UI |
+| Rules engine | ✅ | ✅ | Create / edit / fire / toggle / delete + preset save/load/import/export |
 | Scheduler | ✅ | ✅ | NTP-driven, timezone-aware |
 | mDNS | ✅ | n/a | Advertises `ir-remote.local` once STA gets an IP |
 
