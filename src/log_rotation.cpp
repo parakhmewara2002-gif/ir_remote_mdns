@@ -53,7 +53,13 @@ bool LogRotationManager::rotate() {
     if (sdMgr.isAvailable()) {
         String csvPath = "/logs/audit_" + today + ".csv";
         String csv = auditToCsv(-1, AUDIT_MAX_ENTRIES);
-        sdMgr.log(csv);  // Use sdMgr to write (safe API)
+        // CSV FIX: previously called sdMgr.log(csv) which appends a single
+        // line to /logs/activity.log — csvPath was constructed but never
+        // used. Now writes to the intended CSV path via the atomic helper.
+        if (!sdMgr.safeWriteFile(csvPath, csv)) {
+            Serial.printf(LOG_ROT_TAG " WARN: CSV write to %s failed\n",
+                          csvPath.c_str());
+        }
     }
 
     // Clear in-memory audit log
@@ -75,12 +81,20 @@ bool LogRotationManager::_archiveToCsv() const {
              t->tm_year + 1900, t->tm_mon + 1, t->tm_mday);
     String csv = auditToCsv(-1, AUDIT_MAX_ENTRIES);
     if (csv.isEmpty()) return false;
-    // Use sdMgr API - avoids direct SD.open() which bypasses hot-plug safety
+    // CSV FIX: write to a real per-day archive file rather than appending to
+    // /logs/activity.log. The pre-fix code lost the "archive" semantics —
+    // CSV header lines got mixed into the rolling activity log.
     String header = String("# Audit CSV Archive: ") + today + "\n";
-    sdMgr.log(header + csv);
-    Serial.printf(LOG_ROT_TAG " CSV archive written to SD log (%u bytes)\n",
-                  (unsigned)csv.length());
-    return true;
+    String archivePath = String("/logs/audit_") + today + ".csv";
+    bool ok = sdMgr.safeWriteFile(archivePath, header + csv);
+    if (ok) {
+        Serial.printf(LOG_ROT_TAG " CSV archive written to %s (%u bytes)\n",
+                      archivePath.c_str(), (unsigned)csv.length());
+    } else {
+        Serial.printf(LOG_ROT_TAG " WARN: CSV archive write to %s failed\n",
+                      archivePath.c_str());
+    }
+    return ok;
 }
 
 // ─────────────────────────────────────────────────────────────

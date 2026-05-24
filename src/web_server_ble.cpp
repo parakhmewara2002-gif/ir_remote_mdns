@@ -16,10 +16,12 @@
 // ============================================================
 #include "web_server.h"
 #include "bluetooth_module.h"
+#include "auth_manager.h"
 #include <ArduinoJson.h>
 #include <AsyncJson.h>
 
 extern BluetoothModule btModule;
+extern AuthManager authMgr;  // AUTH FIX: gate every BLE endpoint
 
 // ── Local helpers ─────────────────────────────────────────────
 static void _bleSendJson(AsyncWebServerRequest* req, int code, const String& json) {
@@ -54,6 +56,11 @@ static void _bleFreeBuf(AsyncWebServerRequest* req) {
         [](AsyncWebServerRequest* req){}, \
         nullptr, \
         [this](AsyncWebServerRequest* req, uint8_t* d, size_t l, size_t i, size_t t) { \
+            /* AUTH FIX: gate every BLE state-changing POST. Previously
+               unauthenticated, exposing /api/ble/connect, /hid/key,
+               /bonds/clear, etc. to any LAN attacker. Done at first
+               chunk so we don't buffer body for unauthorised callers. */ \
+            if (i == 0 && !authMgr.checkAuth(req)) { return; } \
             if (_bleGetBuf(req)->length() + l > 4096) { \
                 _bleFreeBuf(req); \
                 _bleSendJson(req, 413, "{\"error\":\"Request too large\"}"); return; \
@@ -73,6 +80,7 @@ void WebUI::setupBluetoothRoutes() {
     // ── GET /api/ble/status ───────────────────────────────────
     _server.on("/api/ble/status", HTTP_GET,
         [](AsyncWebServerRequest* req) {
+            if (!authMgr.checkAuth(req)) return;  // AUTH FIX
             String j = btModule.statusJson();
             AsyncWebServerResponse* r = req->beginResponse(200, "application/json", j);
             r->addHeader("Access-Control-Allow-Origin", "*");
@@ -83,6 +91,7 @@ void WebUI::setupBluetoothRoutes() {
     // ── GET /api/ble/config ───────────────────────────────────
     _server.on("/api/ble/config", HTTP_GET,
         [](AsyncWebServerRequest* req) {
+            if (!authMgr.checkAuth(req)) return;  // AUTH FIX: leaks lastAddress
             BleConfig cfg = btModule.getConfig();
             JsonDocument doc;
             doc["enabled"]     = cfg.enabled;
@@ -117,6 +126,7 @@ void WebUI::setupBluetoothRoutes() {
     // ── POST /api/ble/scan/start ──────────────────────────────
     _server.on("/api/ble/scan/start", HTTP_POST,
         [](AsyncWebServerRequest* req) {
+            if (!authMgr.checkAuth(req)) return;  // AUTH FIX
             uint8_t dur = 10;
             if (req->hasParam("duration"))
                 dur = (uint8_t)req->getParam("duration")->value().toInt();
@@ -127,6 +137,7 @@ void WebUI::setupBluetoothRoutes() {
     // ── POST /api/ble/scan/stop ───────────────────────────────
     _server.on("/api/ble/scan/stop", HTTP_POST,
         [](AsyncWebServerRequest* req) {
+            if (!authMgr.checkAuth(req)) return;  // AUTH FIX
             btModule.stopScan();
             _bleSendJson(req, 200, "{\"ok\":true,\"scanning\":false}");
         });
@@ -134,6 +145,7 @@ void WebUI::setupBluetoothRoutes() {
     // ── GET /api/ble/scan/results ─────────────────────────────
     _server.on("/api/ble/scan/results", HTTP_GET,
         [](AsyncWebServerRequest* req) {
+            if (!authMgr.checkAuth(req)) return;  // AUTH FIX: nearby device list
             const auto& results = btModule.scanResults();
             JsonDocument doc;
             JsonArray arr = doc["devices"].to<JsonArray>();
@@ -177,6 +189,7 @@ void WebUI::setupBluetoothRoutes() {
     // ── POST /api/ble/disconnect ──────────────────────────────
     _server.on("/api/ble/disconnect", HTTP_POST,
         [](AsyncWebServerRequest* req) {
+            if (!authMgr.checkAuth(req)) return;  // AUTH FIX
             btModule.disconnect();
             _bleSendJson(req, 200, "{\"ok\":true,\"connected\":false}");
         });
@@ -184,6 +197,7 @@ void WebUI::setupBluetoothRoutes() {
     // ── GET /api/ble/watch ────────────────────────────────────
     _server.on("/api/ble/watch", HTTP_GET,
         [](AsyncWebServerRequest* req) {
+            if (!authMgr.checkAuth(req)) return;  // AUTH FIX: HR/SpO2/steps PII
             const WatchData& w = btModule.watchData();
             JsonDocument doc;
             doc["connected"]   = w.connected;
@@ -263,6 +277,7 @@ void WebUI::setupBluetoothRoutes() {
     // GET /api/ble/bonds  — list bonded devices
     _server.on("/api/ble/bonds", HTTP_GET,
         [](AsyncWebServerRequest* req) {
+            if (!authMgr.checkAuth(req)) return;  // AUTH FIX
             _bleSendJson(req, 200, btModule.bondsJson());
         });
 
@@ -295,6 +310,7 @@ void WebUI::setupBluetoothRoutes() {
     // POST /api/ble/bonds/clear  — wipe all bonds
     _server.on("/api/ble/bonds/clear", HTTP_POST,
         [](AsyncWebServerRequest* req) {
+            if (!authMgr.checkAuth(req)) return;  // AUTH FIX: wipes pairings
             btModule.clearAllBonds();
             _bleSendJson(req, 200, "{\"ok\":true}");
         });
@@ -304,6 +320,7 @@ void WebUI::setupBluetoothRoutes() {
     // GET /api/ble/multi  — slot status
     _server.on("/api/ble/multi", HTTP_GET,
         [](AsyncWebServerRequest* req) {
+            if (!authMgr.checkAuth(req)) return;  // AUTH FIX
             _bleSendJson(req, 200, btModule.multiStatusJson());
         });
 
@@ -340,12 +357,14 @@ void WebUI::setupBluetoothRoutes() {
     // GET /api/ble/timesync  — sync status
     _server.on("/api/ble/timesync", HTTP_GET,
         [](AsyncWebServerRequest* req) {
+            if (!authMgr.checkAuth(req)) return;  // AUTH FIX
             _bleSendJson(req, 200, btModule.timeSyncJson());
         });
 
     // POST /api/ble/timesync/sync  — trigger sync from connected phone
     _server.on("/api/ble/timesync/sync", HTTP_POST,
         [](AsyncWebServerRequest* req) {
+            if (!authMgr.checkAuth(req)) return;  // AUTH FIX
             bool ok = btModule.syncTimeFromPhone();
             if (ok)
                 _bleSendJson(req, 200, "{\"ok\":true,\"message\":\"Time synced from phone via CTS\"}");
@@ -373,12 +392,14 @@ void WebUI::setupBluetoothRoutes() {
     // GET /api/ble/proxy
     _server.on("/api/ble/proxy", HTTP_GET,
         [](AsyncWebServerRequest* req) {
+            if (!authMgr.checkAuth(req)) return;  // AUTH FIX
             _bleSendJson(req, 200, btModule.proxyStatusJson());
         });
 
     // GET /api/ble/proxy/config
     _server.on("/api/ble/proxy/config", HTTP_GET,
         [](AsyncWebServerRequest* req) {
+            if (!authMgr.checkAuth(req)) return;  // AUTH FIX
             ProxyConfig cfg = btModule.proxyLoadConfig();
             JsonDocument doc;
             doc["watchAddress"] = cfg.watchAddress;
@@ -418,6 +439,7 @@ void WebUI::setupBluetoothRoutes() {
     // POST /api/ble/proxy/start
     _server.on("/api/ble/proxy/start", HTTP_POST,
         [](AsyncWebServerRequest* req) {
+            if (!authMgr.checkAuth(req)) return;  // AUTH FIX
             ProxyConfig cfg = btModule.proxyLoadConfig();
             if (cfg.watchAddress.isEmpty()) {
                 _bleSendJson(req, 400,
@@ -436,6 +458,7 @@ void WebUI::setupBluetoothRoutes() {
     // POST /api/ble/proxy/stop
     _server.on("/api/ble/proxy/stop", HTTP_POST,
         [](AsyncWebServerRequest* req) {
+            if (!authMgr.checkAuth(req)) return;  // AUTH FIX
             btModule.proxyStop();
             _bleSendJson(req, 200, "{\"ok\":true,\"message\":\"Proxy stopped\"}");
         });

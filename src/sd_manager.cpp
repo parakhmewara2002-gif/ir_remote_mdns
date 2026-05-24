@@ -935,8 +935,26 @@ void SdManager::_drainWriteQueue() {
     }
 }
 
-// ── [#34] _crc32 ─────────────────────────────────────────────
-uint32_t SdManager::_crc32(const uint8_t* buf, size_t len) {
+// ── CRC32 streaming helper ───────────────────────────────────
+// FIX: _crc32() is one-shot (re-inits state on every call), so the
+// previous chunked usage `runCrc = _crc32(buf+bi, 1)` for each byte
+// overwrote the running value with the CRC of the single byte —
+// verification "passed" only by accident. _crc32Stream lets callers
+// chain across read chunks; pass 0xFFFFFFFFUL as the initial state
+// and XOR with 0xFFFFFFFFUL after the final chunk.
+static const uint32_t* _crc32Table();
+uint32_t SdManager::_crc32Stream(uint32_t crc,
+                                  const uint8_t* buf, size_t len) {
+    const uint32_t* tbl = _crc32Table();
+    for (size_t i = 0; i < len; ++i)
+        crc = tbl[(crc ^ buf[i]) & 0xFF] ^ (crc >> 8);
+    return crc;
+}
+
+// ── CRC32 lookup table (IEEE 802.3 polynomial, reversed) ─────
+// Lifted into file scope so both _crc32() (one-shot) and the new
+// _crc32Stream() (chained) share a single 1 KB table.
+static const uint32_t* _crc32Table() {
     static const uint32_t table[256] = {
         0x00000000,0x77073096,0xee0e612c,0x990951ba,0x076dc419,0x706af48f,
         0xe963a535,0x9e6495a3,0x0edb8832,0x79dcb8a4,0xe0d5e91b,0x97d2d988,
@@ -969,10 +987,12 @@ uint32_t SdManager::_crc32(const uint8_t* buf, size_t len) {
         0xd80d2bda,0xaf0a1b4c,0x36034af6,0x41047a60,0xdf60efc3,0xa8670955,
         0x316658ef,0x4661687b,0xb40bbe37,0xc30c8ea1,0x5a05df1b,0x2d02ef8d
     };
-    uint32_t crc = 0xFFFFFFFFUL;
-    for (size_t i = 0; i < len; ++i)
-        crc = table[(crc ^ buf[i]) & 0xFF] ^ (crc >> 8);
-    return crc ^ 0xFFFFFFFFUL;
+    return table;
+}
+
+// ── [#34] _crc32 ─────────────────────────────────────────────
+uint32_t SdManager::_crc32(const uint8_t* buf, size_t len) {
+    return _crc32Stream(0xFFFFFFFFUL, buf, len) ^ 0xFFFFFFFFUL;
 }
 
 // ── _copyFile ────────────────────────────────────────────────
@@ -1001,52 +1021,36 @@ bool SdManager::_copyFileWithCrc(const String& src, const String& dst,
     }
 
     uint8_t copyBuf[512];
+    // CRC FIX: chain real CRC32 state across read chunks. Previous code
+    // had a placeholder ((crc>>8)^0) inner loop and also overwrote
+    // crcOut with _crc32(copyBuf,n) per chunk (CRC of one chunk, not
+    // the whole file) — manifest CRC stored on backup was always the
+    // CRC of just the final chunk.
     uint32_t crc = 0xFFFFFFFFUL;
     size_t total = 0;
+    bool writeFailed = false;
     while (srcFile.available()) {
         size_t n = srcFile.read(copyBuf, sizeof(copyBuf));
         if (n == 0) break;
         if (dstFile.write(copyBuf, n) != n) {
-            srcFile.close(); dstFile.close();
-            return false;
+            writeFailed = true;
+            break;
         }
-        // Running CRC
-        for (size_t i = 0; i < n; ++i)
-            crc = ((crc >> 8) ^ /* table lookup inline */ 0); // simplified - use _crc32 on chunks
-        crcOut = _crc32(copyBuf, n); // per-chunk is imprecise; full file CRC below
+        crc = _crc32Stream(crc, copyBuf, n);
         total += n;
     }
-    srcFile.close(); dstFile.close();
-
-    // Compute proper CRC over the written file on SD
-    if (dstOnSD) {
-        File verify = SD.open(dst, FILE_READ);
-        if (verify) {
-            crc = 0xFFFFFFFFUL;
-            while (verify.available()) {
-                size_t n = verify.read(copyBuf, sizeof(copyBuf));
-                for (size_t i = 0; i < n; ++i)
-                    crc = ((crc >> 8) ^ 0); // placeholder; use full _crc32 below
-            }
-            verify.close();
-        }
+    srcFile.close();
+    dstFile.close();
+    if (writeFailed) {
+        // Leave no partially-written destination behind.
+        if (dstOnSD) SD.remove(dst); else LittleFS.remove(dst);
+        return false;
     }
-    // Full CRC: re-read destination
-    if (dstOnSD && SD.exists(dst)) {
-        File vf = SD.open(dst, FILE_READ);
-        if (vf) {
-            uint32_t runCrc = 0xFFFFFFFFUL;
-            while (vf.available()) {
-                size_t n = vf.read(copyBuf, sizeof(copyBuf));
-                runCrc = _crc32(copyBuf, n); // Note: proper incremental CRC needs chaining
-            }
-            crcOut = runCrc ^ 0xFFFFFFFFUL;
-            vf.close();
-        }
-    }
+    crcOut = crc ^ 0xFFFFFFFFUL;
 
-    Serial.printf(DEBUG_TAG " [SD] Copied %s -> %s (%u bytes)\n",
-                  src.c_str(), dst.c_str(), (unsigned)total);
+    Serial.printf(DEBUG_TAG " [SD] Copied %s -> %s (%u bytes, crc=0x%08lx)\n",
+                  src.c_str(), dst.c_str(), (unsigned)total,
+                  (unsigned long)crcOut);
     return true;
 }
 
@@ -1631,32 +1635,28 @@ bool SdManager::restoreFromSD(const String& tag) {
                 }
             }
             if (foundInManifest && storedCrc != 0) {
-                // Compute CRC of source file on SD
+                // CRC FIX: stream the file once with chained CRC32 state.
+                // Previously the inner loop did `runCrc = _crc32(buf+bi,1)`
+                // (re-init on every byte → always CRC of the last byte) and
+                // then re-opened the file to load the WHOLE thing into a
+                // std::vector<uint8_t> just to recompute the CRC. Both
+                // passes were broken AND the duplicate read could OOM on
+                // multi-KB JSON.
                 File sf = SD.open(src, FILE_READ);
                 if (sf) {
                     uint8_t buf[512];
                     uint32_t runCrc = 0xFFFFFFFFUL;
                     while (sf.available()) {
                         size_t n = sf.read(buf, sizeof(buf));
-                        for (size_t bi = 0; bi < n; ++bi)
-                            runCrc = (_crc32(buf + bi, 1)); // incremental — simplified
+                        runCrc = _crc32Stream(runCrc, buf, n);
                     }
-                    runCrc ^= 0xFFFFFFFFUL;
+                    uint32_t fileCrc = runCrc ^ 0xFFFFFFFFUL;
                     sf.close();
-                    // Full CRC calculation
-                    File sf2 = SD.open(src, FILE_READ);
-                    if (sf2) {
-                        std::vector<uint8_t> content;
-                        content.reserve((size_t)sf2.size());
-                        while (sf2.available()) content.push_back((uint8_t)sf2.read());
-                        sf2.close();
-                        uint32_t fileCrc = _crc32(content.data(), content.size());
-                        if (fileCrc != storedCrc) {
-                            log(String("CRC mismatch on restore: ") + e.name +
-                                " (expected " + String(storedCrc) + " got " + String(fileCrc) + ")",
-                                SdLogLevel::ERROR);
-                            continue; // skip this file
-                        }
+                    if (fileCrc != storedCrc) {
+                        log(String("CRC mismatch on restore: ") + e.name +
+                            " (expected " + String(storedCrc) + " got " + String(fileCrc) + ")",
+                            SdLogLevel::ERROR);
+                        continue; // skip this file
                     }
                 }
             }

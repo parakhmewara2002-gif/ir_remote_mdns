@@ -547,8 +547,15 @@ private:
     void   _checkAutoExport();
     // [#33] Drain async write queue
     void   _drainWriteQueue();
-    // [#34] Software CRC32
+    // [#34] Software CRC32 (one-shot — re-inits state every call).
     static uint32_t _crc32(const uint8_t* buf, size_t len);
+    // CRC32 STREAM FIX: chainable variant. Pass 0xFFFFFFFFUL as crc on
+    // the first chunk, feed buf/len, and XOR result with 0xFFFFFFFFUL
+    // after the final chunk. Required for files > one buffer; the
+    // previous code mis-used _crc32 per chunk, overwriting the running
+    // state with the CRC of a single chunk so verification was a no-op.
+    static uint32_t _crc32Stream(uint32_t crc,
+                                  const uint8_t* buf, size_t len);
     // [#42] Queue an SD event string
     void   _queueSdEvent(const char* event);
 };

@@ -50,12 +50,45 @@ static void _wpenJson(AsyncWebServerRequest* req, int code, const String& json) 
     req->send(r);
 }
 
+// BODY-BUFFER FIX: the prior WPEN_POST had NO buffering — handler ran
+// once per TCP chunk with only that chunk's bytes (and would call
+// req->send each time, producing multiple responses per request).
+// Use the same getBodyBuf/freeBodyBuf pattern as web_server_modules.cpp.
+static String* _wpenGetBodyBuf(AsyncWebServerRequest* req) {
+    if (!req->_tempObject) {
+        req->_tempObject = new String();
+        req->onDisconnect([req]() {
+            if (req->_tempObject) {
+                delete reinterpret_cast<String*>(req->_tempObject);
+                req->_tempObject = nullptr;
+            }
+        });
+    }
+    return reinterpret_cast<String*>(req->_tempObject);
+}
+static void _wpenFreeBodyBuf(AsyncWebServerRequest* req) {
+    if (req->_tempObject) {
+        delete reinterpret_cast<String*>(req->_tempObject);
+        req->_tempObject = nullptr;
+    }
+}
+
 #define WPEN_POST(path, handler) \
     _server.on(path, HTTP_POST, \
         [](AsyncWebServerRequest* req){}, \
         nullptr, \
         [this](AsyncWebServerRequest* req, uint8_t* d, size_t l, size_t i, size_t t) { \
-            handler(req, d, l); \
+            if (_wpenGetBodyBuf(req)->length() + l > HTTP_MAX_BODY) { \
+                _wpenFreeBodyBuf(req); \
+                _wpenJson(req, 413, "{\"error\":\"Request too large\"}"); return; \
+            } \
+            _wpenGetBodyBuf(req)->concat((char*)d, l); \
+            bool lastChunk = (t > 0) ? (i + l >= t) : (i == 0); \
+            if (lastChunk) { \
+                String* buf = _wpenGetBodyBuf(req); \
+                handler(req, (uint8_t*)buf->c_str(), buf->length()); \
+                _wpenFreeBodyBuf(req); \
+            } \
         })
 
 void WebUI::setupWpenRoutes() {
@@ -89,6 +122,7 @@ void WebUI::setupWpenRoutes() {
     // ── AP list (JSON) ────────────────────────────────────────
     _server.on("/api/wpen/aps", HTTP_GET,
         [](AsyncWebServerRequest* req) {
+            if (!authMgr.checkAuth(req)) return;  // AUTH FIX: gate scan results
             _wpenJson(req, 200, wifiPen.apListJson());
         }
     );
@@ -96,6 +130,7 @@ void WebUI::setupWpenRoutes() {
     // ── AP list (CSV download) — Feature 17 ──────────────────
     _server.on("/api/wpen/aps.csv", HTTP_GET,
         [](AsyncWebServerRequest* req) {
+            if (!authMgr.checkAuth(req)) return;  // AUTH FIX: scan CSV download
             String csv = wifiPen.apListCsv();
             AsyncWebServerResponse* r = req->beginResponse(200, "text/csv", csv);
             r->addHeader("Content-Disposition",
@@ -147,6 +182,7 @@ void WebUI::setupWpenRoutes() {
     // ── Status ────────────────────────────────────────────────
     _server.on("/api/wpen/status", HTTP_GET,
         [](AsyncWebServerRequest* req) {
+            if (!authMgr.checkAuth(req)) return;  // AUTH FIX
             _wpenJson(req, 200, wifiPen.statusJson());
         }
     );
@@ -154,6 +190,7 @@ void WebUI::setupWpenRoutes() {
     // ── Download PCAP ─────────────────────────────────────────
     _server.on("/api/wpen/capture/pcap", HTTP_GET,
         [](AsyncWebServerRequest* req) {
+            if (!authMgr.checkAuth(req)) return;  // AUTH FIX: pcap with handshakes
             if (!wifiPen.hasPcap()) {
                 _wpenJson(req, 404, "{\"error\":\"no pcap\"}"); return;
             }
@@ -171,6 +208,7 @@ void WebUI::setupWpenRoutes() {
     // ── Download HCCAPX ───────────────────────────────────────
     _server.on("/api/wpen/capture/hccapx", HTTP_GET,
         [](AsyncWebServerRequest* req) {
+            if (!authMgr.checkAuth(req)) return;  // AUTH FIX
             if (!wifiPen.hasHccapx()) {
                 _wpenJson(req, 404, "{\"error\":\"no hccapx\"}"); return;
             }
@@ -188,6 +226,7 @@ void WebUI::setupWpenRoutes() {
     // ── Download PMKID (hashcat legacy format) ────────────────
     _server.on("/api/wpen/capture/pmkid", HTTP_GET,
         [](AsyncWebServerRequest* req) {
+            if (!authMgr.checkAuth(req)) return;  // AUTH FIX
             String pmkid = wifiPen.pmkidHashcat();
             if (!pmkid.length()) {
                 _wpenJson(req, 404, "{\"error\":\"no pmkid\"}"); return;
@@ -205,6 +244,7 @@ void WebUI::setupWpenRoutes() {
     // ── Download PMKID hcxtools .22000 format — Feature 16 ───
     _server.on("/api/wpen/capture/hcx22000", HTTP_GET,
         [](AsyncWebServerRequest* req) {
+            if (!authMgr.checkAuth(req)) return;  // AUTH FIX
             String data = wifiPen.pmkidHcx22000();
             if (!data.length()) {
                 _wpenJson(req, 404, "{\"error\":\"no pmkid\"}"); return;
@@ -235,6 +275,7 @@ void WebUI::setupWpenRoutes() {
     // ── Client list ───────────────────────────────────────────
     _server.on("/api/wpen/clients", HTTP_GET,
         [](AsyncWebServerRequest* req) {
+            if (!authMgr.checkAuth(req)) return;  // AUTH FIX: client MAC list
             _wpenJson(req, 200, wifiPen.clientListJson());
         }
     );
@@ -242,6 +283,7 @@ void WebUI::setupWpenRoutes() {
     // ── Probe sniffer list ────────────────────────────────────
     _server.on("/api/wpen/probes", HTTP_GET,
         [](AsyncWebServerRequest* req) {
+            if (!authMgr.checkAuth(req)) return;  // AUTH FIX: probed SSIDs leak
             _wpenJson(req, 200, wifiPen.probeListJson());
         }
     );
@@ -296,6 +338,7 @@ void WebUI::setupWpenRoutes() {
     // ── Hashcat command ───────────────────────────────────────
     _server.on("/api/wpen/hashcat_cmd", HTTP_GET,
         [](AsyncWebServerRequest* req) {
+            if (!authMgr.checkAuth(req)) return;  // AUTH FIX
             String cmd = wifiPen.hashcatCmd();
             String json = "{\"cmd\":\"" + cmd + "\"}";
             _wpenJson(req, 200, json);
@@ -318,6 +361,7 @@ void WebUI::setupWpenRoutes() {
     // ── Attack log ────────────────────────────────────────────
     _server.on("/api/wpen/log", HTTP_GET,
         [](AsyncWebServerRequest* req) {
+            if (!authMgr.checkAuth(req)) return;  // AUTH FIX: attack log leak
             _wpenJson(req, 200, wifiPen.attackLogJson());
         }
     );
@@ -368,6 +412,7 @@ void WebUI::setupWpenRoutes() {
     // ── WPA2/WPA3 auto-detect — Feature 3 ────────────────────
     _server.on("/api/wpen/auto_detect", HTTP_GET,
         [](AsyncWebServerRequest* req) {
+            if (!authMgr.checkAuth(req)) return;  // AUTH FIX
             uint8_t apIdx = 0;
             if (req->hasParam("apIdx")) {
                 apIdx = (uint8_t)req->getParam("apIdx")->value().toInt();
@@ -397,6 +442,7 @@ void WebUI::setupWpenRoutes() {
     // ── Captive portal password — Feature 6 ──────────────────
     _server.on("/api/wpen/captive_pass", HTTP_GET,
         [](AsyncWebServerRequest* req) {
+            if (!authMgr.checkAuth(req)) return;  // AUTH FIX: captured passwords!
             String pw = wifiPen.captivePassword();
             // Basic JSON string escaping
             pw.replace("\\", "\\\\");
@@ -424,6 +470,7 @@ void WebUI::setupWpenRoutes() {
     // ── Channel utilization — Feature 10 ─────────────────────
     _server.on("/api/wpen/channel_util", HTTP_GET,
         [](AsyncWebServerRequest* req) {
+            if (!authMgr.checkAuth(req)) return;  // AUTH FIX
             _wpenJson(req, 200, wifiPen.channelUtilJson());
         }
     );
@@ -431,6 +478,7 @@ void WebUI::setupWpenRoutes() {
     // ── Hidden AP fingerprint — Feature 11 ───────────────────
     _server.on("/api/wpen/hidden_aps", HTTP_GET,
         [](AsyncWebServerRequest* req) {
+            if (!authMgr.checkAuth(req)) return;  // AUTH FIX
             _wpenJson(req, 200, wifiPen.hiddenApJson());
         }
     );
@@ -438,6 +486,7 @@ void WebUI::setupWpenRoutes() {
     // ── Mesh/repeater detection — Feature 12 ─────────────────
     _server.on("/api/wpen/mesh_aps", HTTP_GET,
         [](AsyncWebServerRequest* req) {
+            if (!authMgr.checkAuth(req)) return;  // AUTH FIX
             _wpenJson(req, 200, wifiPen.meshApJson());
         }
     );
@@ -445,6 +494,7 @@ void WebUI::setupWpenRoutes() {
     // ── Vendor IE list — Feature 13 ──────────────────────────
     _server.on("/api/wpen/vendor_ies", HTTP_GET,
         [](AsyncWebServerRequest* req) {
+            if (!authMgr.checkAuth(req)) return;  // AUTH FIX
             _wpenJson(req, 200, wifiPen.vendorIEJson());
         }
     );
@@ -452,6 +502,7 @@ void WebUI::setupWpenRoutes() {
     // ── RSSI history — Feature 14 ────────────────────────────
     _server.on("/api/wpen/rssi_hist", HTTP_GET,
         [](AsyncWebServerRequest* req) {
+            if (!authMgr.checkAuth(req)) return;  // AUTH FIX
             uint8_t apIdx = 0;
             if (req->hasParam("apIdx")) {
                 apIdx = (uint8_t)req->getParam("apIdx")->value().toInt();
@@ -463,6 +514,7 @@ void WebUI::setupWpenRoutes() {
     // ── Attack profiles list — Feature 15 ────────────────────
     _server.on("/api/wpen/profiles", HTTP_GET,
         [](AsyncWebServerRequest* req) {
+            if (!authMgr.checkAuth(req)) return;  // AUTH FIX
             _wpenJson(req, 200, wifiPen.profileListJson());
         }
     );
