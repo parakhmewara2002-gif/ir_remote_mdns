@@ -328,7 +328,7 @@ bool MicModule::startStream() {
         Serial.println("[MIC] No source - configure I2S or ADC first");
         return false;
     }
-    i2s_zero_dma_buffer(MIC_I2S_PORT);
+    if (_i2sInited) i2s_zero_dma_buffer(MIC_I2S_PORT);
     _streaming = true;
     Serial.printf("[MIC] Stream start (%s)\n", activeSourceStr().c_str());
     return true;
@@ -340,7 +340,7 @@ void MicModule::playSamples(const int16_t* samples, size_t count) {
     if (!_i2sInited || !samples || count == 0) return;
     _speakerActive = true;
     size_t written = 0;
-    i2s_write(I2S_NUM_0, samples, count * sizeof(int16_t), &written, pdMS_TO_TICKS(20));
+    i2s_write(MIC_I2S_PORT, samples, count * sizeof(int16_t), &written, pdMS_TO_TICKS(20));
 }
 
 // ── Recording ─────────────────────────────────────────────────
