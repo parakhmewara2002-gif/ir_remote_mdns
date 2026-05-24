@@ -43,7 +43,7 @@ POST /api/ble/proxy/stop
 | BLE proxy (role 7) | ✅ | ✅ | Watch address, spoof name, HR/batt/temp forward, start/stop panel |
 | BLE bonds / multi-connect / time-sync | ✅ | ✅ | Bond list + delete, multi-slot table, time-sync toggle |
 | NFC (PN532) | ✅ | ✅ | Read / save / clone / emulate, dictionary attack, SD library |
-| RFID (MFRC522) | ✅ | ✅ | Read / write / emulate, allowlist + per-card macros (needs UI) |
+| RFID (MFRC522) | ✅ | ✅ | Read / write / emulate, allowlist + per-card macros |
 | Sub-GHz (CC1101) | ✅ | ✅ | Capture, save, replay, raw modulation, SD signals |
 | nRF24 | ✅ | ✅ | Scan, sniff, replay, channel-hop |
 | Wi-Fi pen-test (deauth / PMKID / handshake / rogue-AP / captive) | ✅ | ✅ | Uses WSL-bypass to inject raw 802.11 frames |
@@ -56,7 +56,7 @@ POST /api/ble/proxy/stop
 | Scheduler | ✅ | ✅ | NTP-driven, timezone-aware |
 | mDNS + NetBIOS | ✅ | n/a | `ir-remote.local` (mDNS) + `http://ir-remote` (NetBIOS/NBNS — Windows without Bonjour) |
 
-Legend: ✅ fully wired · ⚠️ partial · ❌ not yet built
+Legend: ✅ fully wired
 
 ---
 
