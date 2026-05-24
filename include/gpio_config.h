@@ -32,7 +32,7 @@
 #define IR_DEFAULT_EMIT_PIN_4 32
 #define IR_DEFAULT_EMIT_PIN_5 17
 #define IR_DEFAULT_EMIT_PIN_6 16
-#define IR_DEFAULT_EMIT_PIN_7 4
+#define IR_DEFAULT_EMIT_PIN_7 21
 
 // ── Pin classification ───────────────────────────────────────
 

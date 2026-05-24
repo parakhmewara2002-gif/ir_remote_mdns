@@ -203,7 +203,7 @@ void setup() {
     scheduler.begin();
 
     Serial.printf(DEBUG_TAG " Ready v%s  AP: http://%s\n",
-                  "8.0.0", wifiMgr.apIP().c_str());
+                  FIRMWARE_VERSION, wifiMgr.apIP().c_str());
     Serial.printf(DEBUG_TAG " RX=GPIO%d  TX-active=%d  Groups=%u  Schedules=%u  Heap=%u\n",
                   irReceiver.activePin(),
                   irTransmitter.activeCount(),

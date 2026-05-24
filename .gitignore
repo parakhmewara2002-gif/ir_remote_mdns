@@ -2,3 +2,5 @@
 .vscode/
 *.swp
 *.bak
+=
+data/*.bak*

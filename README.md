@@ -31,9 +31,6 @@ POST /api/ble/proxy/start
 POST /api/ble/proxy/stop
 ```
 
-Backend is implemented; UI surface for this feature still needs the
-role-7 "Proxy" button + control panel in the BLE tab — open work.
-
 ---
 
 ## Feature matrix
@@ -94,7 +91,7 @@ cd ir_remote_mdns
 pio run -e esp32dev                     # firmware.bin
 pio run -e esp32dev --target buildfs    # littlefs.bin
 pio run -e esp32dev --target upload     # flash firmware via USB
-pio run -e esp32dev --target uploadfs   # flash UI to /spiffs
+pio run -e esp32dev --target uploadfs   # flash web UI to LittleFS
 ```
 
 ### 3. Connect
@@ -225,7 +222,7 @@ for a single ESP32-WROOM-32 with:
 - nRF24L01+ on SPI
 - SD card on SPI (VSPI bus, CS=GPIO4)
 - Hybrid mic (I²S or ADC, both supported)
-- WS2812 status LED on GPIO2
+- WS2812 status LED on GPIO13
 
 Every module can be enabled / disabled at runtime from
 Settings → Modules, freeing its GPIOs for other uses.
