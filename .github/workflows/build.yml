@@ -8,8 +8,22 @@ on:
     branches: [ main, master ]
   workflow_dispatch:
 
+# PERMISSIONS: kept at write because the release step at the bottom uses
+# softprops/action-gh-release which needs contents:write. PR runs inherit
+# this — the release step itself is gated to push-on-main so it can't
+# actually publish from a PR, but the broader scope is a known limitation.
+# To tighten further: split into a read-only build job + a separate
+# release job that's `if: github.event_name == 'push'` and has its own
+# permissions block.
 permissions:
   contents: write
+
+# CONCURRENCY FIX: prevent rapid pushes from racing each other on the
+# release tag namespace and from wasting CI minutes on superseded PR
+# commits.
+concurrency:
+  group: build-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 env:
   FIRMWARE_VERSION: "10.0.0"

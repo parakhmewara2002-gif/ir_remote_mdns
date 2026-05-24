@@ -101,10 +101,10 @@ pio run -e esp32dev --target uploadfs   # flash UI to /spiffs
 
 | | |
 |---|---|
-| Default AP | `IR-Remote` / `irremote123` |
+| Default AP | `IR-Remote` / `irremote123` ⚠️ same on every unit — change on first boot |
 | AP URL | <http://192.168.4.1> |
 | mDNS (after STA join) | <http://ir-remote.local> |
-| Default auth | disabled — turn on via Settings → Auth |
+| Web-panel auth | disabled by default. Default username `admin`. The password is derived from the chip's WiFi STA MAC and printed to the serial console at boot as `*** DEFAULT PASSWORD: IR-XXYYZZ ***`. Enable via Settings → Auth, then change the password. |
 
 ---
 
@@ -121,8 +121,9 @@ app0      app    factory   0x010000   3072 KB     Firmware
 spiffs    data   spiffs    0x310000    960 KB     LittleFS (web UI + data)
 ```
 
-Total used 4 020 KB out of 4 096 KB — 76 KB is reserved by the SDK
-for the bootloader header and partition table.
+Total used 4 052 KB out of 4 096 KB — 44 KB is reserved (36 KB
+bootloader region + partition table + 8 KB SDK gap between `nvs` and
+`app0`).
 
 ---
 

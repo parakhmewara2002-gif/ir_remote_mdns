@@ -116,7 +116,14 @@ void LogRotationManager::pruneOldLogs() {
     std::vector<String> toDelete;
     File f = dir.openNextFile();
     while (f) {
-        String name = String(f.name());
+        String raw = String(f.name());
+        // FILENAME FIX: some LittleFS builds return name with leading '/',
+        // others return basename only. Previous strict length==15 check
+        // skipped pruning entirely on the former, so /log_archive grew
+        // forever. Strip any leading path so the format check works on
+        // both.
+        int lastSlash = raw.lastIndexOf('/');
+        String name = (lastSlash >= 0) ? raw.substring(lastSlash + 1) : raw;
         // Filename format: YYYY-MM-DD.json
         if (name.endsWith(".json") && name.length() == 15) {
             int yr  = name.substring(0,4).toInt();

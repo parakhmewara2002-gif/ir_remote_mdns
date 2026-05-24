@@ -65,7 +65,10 @@ bool MacroManager::_validName(const String& name) const {
 std::vector<MacroInternalMeta> MacroManager::list() const {
     std::vector<MacroInternalMeta> result;
     File dir = LittleFS.open(MACRO_DIR);
-    if (!dir || !dir.isDirectory()) return result;
+    if (!dir || !dir.isDirectory()) {
+        if (dir) dir.close();   // HANDLE FIX: close dir on non-dir path
+        return result;
+    }
 
     File f = dir.openNextFile();
     while (f) {
@@ -87,6 +90,10 @@ std::vector<MacroInternalMeta> MacroManager::list() const {
         }
         f = dir.openNextFile();
     }
+    // HANDLE FIX: close the directory handle. Previously leaked one
+    // LittleFS handle per list() call (default max_open_files ~5);
+    // after a few rapid /api/macros calls subsequent SD/FS opens failed.
+    dir.close();
     return result;
 }
 

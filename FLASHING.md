@@ -60,7 +60,7 @@ app0       app    factory   0x010000  3072 KB     Firmware (factory slot, no OTA
 spiffs     data   spiffs    0x310000   960 KB     LittleFS (Web GUI + data)
 ```
 
-Total used: 4 020 KB out of the 4 096 KB flash. The 8 KB gap between the end of `nvs` (`0x00E000`) and the start of `app0` (`0x010000`) is reserved by the ESP32 SDK for the partition table and bootloader header.
+Total used: 4 052 KB out of the 4 096 KB flash. The 8 KB gap between the end of `nvs` (`0x00E000`) and the start of `app0` (`0x010000`) is reserved by the ESP32 SDK for the partition table and bootloader header; combined with the 36 KB bootloader region at 0x000000 this accounts for the remaining 44 KB.
 
 ---
 
