@@ -88,6 +88,11 @@ private:
 
     // Batch 2
     void setupRuleRoutes      ();
+    void handleRulePresetList (AsyncWebServerRequest*);
+    void handleRulePresetSave (AsyncWebServerRequest*, uint8_t*, size_t);
+    void handleRulePresetLoad (AsyncWebServerRequest*, uint8_t*, size_t);
+    void handleRuleExport     (AsyncWebServerRequest*, uint8_t*, size_t);
+    void handleRuleImport     (AsyncWebServerRequest*, uint8_t*, size_t);
 
     // Batch 3
     void setupAuthRoutes         ();
@@ -96,6 +101,15 @@ private:
 
     // Batch 4
     void setupLogRoutes       ();
+
+    // Walkie-Talkie
+    void setupWalkieTalkieRoutes();
+
+    // Speaker (PAM8043)
+    void setupSpeakerRoutes();
+
+    // BT A2DP Sink
+    void setupA2dpRoutes();
 
     // WiFi Penetration Module
     void setupWpenRoutes      ();

@@ -82,6 +82,8 @@ public:
 
     // ── SD integration (features 34-35) ───────────────────────
     bool backupConfigToSD(const String& tag);
+    bool sdLogEnabled() const { return _sdLog; }
+    void setSdLog(bool en)     { _sdLog = en; }
 
 private:
     RF24*        _radio       = nullptr;
@@ -90,6 +92,7 @@ private:
     bool         _scanning    = false;
     bool         _sniffing    = false;
     bool         _capReplay   = false;
+    bool         _sdLog       = false;
     uint8_t      _channel     = 76;
     Nrf24DataRate _dataRate   = Nrf24DataRate::RATE_1M;
     Nrf24PaLevel  _paLevel    = Nrf24PaLevel::PA_HIGH;

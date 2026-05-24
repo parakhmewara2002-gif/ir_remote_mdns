@@ -62,6 +62,9 @@ public:
     String statusJson() const;
 
     // ── SD integration (features 22-24) ───────────────────────
+    bool backupToSD(const String& tag);
+    bool restoreFromSD(const String& tag);
+    void setAllowlistEnabled(bool en) { _allowlistEnabled = en; }
     bool loadAllowlistFromSD();
     bool saveAllowlistToSD();
     bool isAllowed(const String& uid) const;
@@ -69,8 +72,12 @@ public:
     void removeFromAllowlist(const String& uid);
 
     void setMacroMapping(const String& uid, const String& macroFile);
+    void removeMacroMapping(const String& uid);
+    String macroMappingsToJson() const;
     void loadMacroMappings();
     void saveMacroMappings();
+
+    String allowlistToJson() const;
 
 private:
     bool      _hwConnected   = false;

@@ -132,14 +132,22 @@ void WebUI::setupMicRoutes() {
             sendJson(req,200,"{\"ok\":true}");
         });
 
-    // POST /api/mic/record/start?name=optional
+    // POST /api/mic/record/start?name=optional  (name also accepted in JSON body)
     _server.on("/api/mic/record/start", HTTP_POST,
-        [](AsyncWebServerRequest* req){
+        [](AsyncWebServerRequest* req){},   // completion handler (body arrives below)
+        nullptr,
+        [](AsyncWebServerRequest* req, uint8_t* data, size_t len, size_t index, size_t total){
             if (!authMgr.checkAuth(req)) return;
             if (micModule.isRecording()){
                 sendJson(req,409,"{\"error\":\"Already recording\"}"); return;
             }
+            // Accept name from URL query string first, then JSON body
             String name = req->hasParam("name") ? req->getParam("name")->value() : "";
+            if (name.isEmpty() && len > 0) {
+                JsonDocument bd;
+                if (!deserializeJson(bd, data, len))
+                    name = bd["name"] | "";
+            }
             if (!micModule.startRecording(name)){
                 sendJson(req,500,"{\"error\":\"Cannot open file - insert SD or free space\"}");
                 return;

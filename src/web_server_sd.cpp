@@ -514,4 +514,42 @@ void WebUI::setupSdExtRoutes() {
             String out; serializeJson(doc, out);
             _sendJsonSd(req, 200, out);
         });
+
+    // ── SD health stats ───────────────────────────────────────
+    // GET /api/sd/health
+    _server.on("/api/sd/health", HTTP_GET,
+        [](AsyncWebServerRequest* req) {
+            if (!sdMgr.isAvailable()) {
+                _sendJsonSd(req, 503, "{\"error\":\"SD not available\"}"); return;
+            }
+            SdHealth h = sdMgr.healthStats();
+            JsonDocument doc;
+            doc["ok"]          = true;
+            doc["totalBytes"]  = (unsigned long long)h.totalBytes;
+            doc["usedBytes"]   = (unsigned long long)h.usedBytes;
+            doc["usedPct"]     = h.usedPct;
+            doc["cardType"]    = h.cardType;
+            doc["mountCount"]  = h.mountCount;
+            String out; serializeJson(doc, out);
+            _sendJsonSd(req, 200, out);
+        });
+
+    // ── SD TAR archive ────────────────────────────────────────
+    // POST /api/sd/archive   body: {"dir":"/backups","out":"/archive.tar"}
+    SD_POST_BODY("/api/sd/archive",
+        [](AsyncWebServerRequest* req, uint8_t* d, size_t l) {
+            if (!authMgr.checkAuth(req)) return;
+            if (!sdMgr.isAvailable()) {
+                _sendJsonSd(req, 503, "{\"error\":\"SD not available\"}"); return;
+            }
+            JsonDocument body;
+            if (deserializeJson(body, d, l) != DeserializationError::Ok) {
+                _sendJsonSd(req, 400, "{\"error\":\"Invalid JSON\"}"); return;
+            }
+            String dir = body["dir"] | "/backups";
+            String out = body["out"] | "/archive.tar";
+            bool ok = sdMgr.createTar(dir, out);
+            _sendJsonSd(req, ok ? 200 : 500,
+                ok ? "{\"ok\":true}" : "{\"error\":\"Archive failed\"}");
+        });
 }

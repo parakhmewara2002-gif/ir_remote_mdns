@@ -131,9 +131,12 @@ void WebUI::begin() {
     setupWatchdogRoutes(); // Batch 3: Self-Healing Watchdog
     setupLogRoutes();
     setupWpenRoutes();     // WiFi Pen Module
-    setupAcRoutes();       // AC Non-Contact Detector
-    setupSdExtRoutes();    // SD extended routes (features 42-45)
-    setupStaticRoutes();   // must be last - catch-all
+    setupAcRoutes();              // AC Non-Contact Detector
+    setupSdExtRoutes();           // SD extended routes (features 42-45)
+    setupWalkieTalkieRoutes();    // Walkie-Talkie
+    setupSpeakerRoutes();         // PAM8043 Speaker
+    setupA2dpRoutes();            // BT A2DP Sink
+    setupStaticRoutes();          // must be last - catch-all
     _server.begin();
     Serial.printf(DEBUG_TAG " HTTP server on port %d\n", HTTP_PORT);
 }
@@ -497,6 +500,79 @@ void WebUI::setupSchedulerRoutes() {
     POST_BODY("/api/ntp/timezone",
         ([this](AsyncWebServerRequest* req, uint8_t* d, size_t l){
             handleSetTimezone(req, d, l); }));
+
+    // ── Scheduler presets / export / import / autobackup ─────
+    // GET  /api/scheduler/presets
+    _server.on("/api/scheduler/presets", HTTP_GET,
+        [](AsyncWebServerRequest* req) {
+            if (!authMgr.checkAuth(req)) return;
+            auto names = scheduler.listPresets();
+            JsonDocument doc;
+            JsonArray arr = doc["presets"].to<JsonArray>();
+            for (const auto& n : names) arr.add(n);
+            String out; serializeJson(doc, out);
+            sendJson(req, 200, out);
+        });
+
+    // POST /api/scheduler/preset/save   body: {"name":"..."}
+    POST_BODY("/api/scheduler/preset/save",
+        ([](AsyncWebServerRequest* req, uint8_t* d, size_t l) {
+            if (!authMgr.checkAuth(req)) return;
+            JsonDocument body; deserializeJson(body, d, l);
+            String name = body["name"] | "";
+            name.trim();
+            if (name.isEmpty()) { sendJson(req, 400, "{\"error\":\"Missing name\"}"); return; }
+            bool ok = scheduler.savePreset(name);
+            sendJson(req, ok ? 200 : 503, ok ? "{\"ok\":true}" : "{\"error\":\"SD unavailable\"}");
+        }));
+
+    // POST /api/scheduler/preset/load   body: {"name":"..."}
+    POST_BODY("/api/scheduler/preset/load",
+        ([](AsyncWebServerRequest* req, uint8_t* d, size_t l) {
+            if (!authMgr.checkAuth(req)) return;
+            JsonDocument body; deserializeJson(body, d, l);
+            String name = body["name"] | "";
+            name.trim();
+            if (name.isEmpty()) { sendJson(req, 400, "{\"error\":\"Missing name\"}"); return; }
+            bool ok = scheduler.loadPreset(name);
+            sendJson(req, ok ? 200 : 404, ok ? "{\"ok\":true}" : "{\"error\":\"Preset not found\"}");
+        }));
+
+    // POST /api/scheduler/export   body: {"tag":"..."}  (tag optional — defaults to "default")
+    POST_BODY("/api/scheduler/export",
+        ([](AsyncWebServerRequest* req, uint8_t* d, size_t l) {
+            if (!authMgr.checkAuth(req)) return;
+            JsonDocument body; deserializeJson(body, d, l);
+            String tag = body["tag"] | "default";
+            tag.trim();
+            bool ok = scheduler.exportToSD(tag);
+            sendJson(req, ok ? 200 : 503, ok ? "{\"ok\":true}" : "{\"error\":\"Export failed\"}");
+        }));
+
+    // POST /api/scheduler/import   body: {"tag":"..."}
+    POST_BODY("/api/scheduler/import",
+        ([](AsyncWebServerRequest* req, uint8_t* d, size_t l) {
+            if (!authMgr.checkAuth(req)) return;
+            JsonDocument body; deserializeJson(body, d, l);
+            String tag = body["tag"] | "default";
+            tag.trim();
+            bool ok = scheduler.importFromSD(tag);
+            sendJson(req, ok ? 200 : 404, ok ? "{\"ok\":true}" : "{\"error\":\"Import failed\"}");
+        }));
+
+    // POST /api/scheduler/autobackup   body: {"en":true,"hour":3}
+    POST_BODY("/api/scheduler/autobackup",
+        ([](AsyncWebServerRequest* req, uint8_t* d, size_t l) {
+            if (!authMgr.checkAuth(req)) return;
+            JsonDocument body; deserializeJson(body, d, l);
+            bool en   = body["en"] | false;
+            int  hour = body["hour"] | 3;
+            if (hour < 0 || hour > 23) hour = 3;
+            String cron = String("0 ") + hour + " * * *";
+            scheduler.enableAutoBackup(en, cron);
+            sendJson(req, 200, String("{\"ok\":true,\"en\":") + (en?"true":"false") +
+                     ",\"hour\":" + hour + "}");
+        }));
 }
 
 // ── Wi-Fi scan routes ─────────────────────────────────────────
@@ -1954,12 +2030,26 @@ void WebUI::handleSdRestore(AsyncWebServerRequest* req, uint8_t* d, size_t l) {
 // ── /api/sd/backups ───────────────────────────────────────────
 void WebUI::handleSdBackupList(AsyncWebServerRequest* req) {
     if (!sdMgr.isAvailable()) { sdNotAvail(req); return; }
-    auto list = sdMgr.listBackups();
+    auto entries = sdMgr.listDir("/backups");
     JsonDocument doc;
     JsonArray arr = doc["backups"].to<JsonArray>();
-    for (const auto& b : list) arr.add(b);
+    for (const auto& e : entries) {
+        if (!e.isDir) continue;
+        JsonObject obj = arr.add<JsonObject>();
+        obj["name"] = e.name;
+        obj["size"] = (unsigned long)e.size;
+        // Format modTime as date string if available
+        if (e.modTime > 0) {
+            char buf[20];
+            struct tm* tm_info = localtime((const time_t*)&e.modTime);
+            strftime(buf, sizeof(buf), "%Y-%m-%d %H:%M", tm_info);
+            obj["date"] = buf;
+        } else {
+            obj["date"] = "";
+        }
+    }
     String out;
-    out.reserve(512);  // FIX: pre-alloc avoids realloc during serialize
+    out.reserve(512);
     serializeJson(doc, out);
     sendJson(req, 200, out);
 }

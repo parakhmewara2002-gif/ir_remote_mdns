@@ -382,6 +382,26 @@ void WebUI::setupAuditRoutes() {
         [this](AsyncWebServerRequest* r, uint8_t* d, size_t l) {
             handleAuditClear(r, d, l); });
 
+    // POST /api/audit/sdmirror   body: {"en": true/false}
+    V1_POST("/api/audit/sdmirror",
+        [](AsyncWebServerRequest* req, uint8_t* d, size_t l) {
+            if (!authMgr.checkAuth(req)) return;
+            JsonDocument doc; deserializeJson(doc, d, l);
+            bool en = doc["en"] | false;
+            auditMgr.setSdMirror(en);
+            sendJson(req, 200, String("{\"ok\":true,\"sdMirror\":") + (en?"true":"false") + "}");
+        });
+
+    // POST /api/audit/sdoverflow  body: {"en": true/false}
+    V1_POST("/api/audit/sdoverflow",
+        [](AsyncWebServerRequest* req, uint8_t* d, size_t l) {
+            if (!authMgr.checkAuth(req)) return;
+            JsonDocument doc; deserializeJson(doc, d, l);
+            bool en = doc["en"] | false;
+            auditMgr.setSdOverflow(en);
+            sendJson(req, 200, String("{\"ok\":true,\"sdOverflow\":") + (en?"true":"false") + "}");
+        });
+
     Serial.println("[WEB] Audit Trail routes registered");
 }
 

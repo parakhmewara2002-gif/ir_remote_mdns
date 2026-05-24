@@ -579,6 +579,7 @@ String NfcModule::tagsToJson() const {
         first = false;
         out += "{\"id\":"; out += t.id;
         out += ",\"name\":\""; out += t.name; out += "\"";
+        out += ",\"label\":\""; out += t.name; out += "\"";
         out += ",\"uid\":\"";  out += t.uid;  out += "\"";
         out += ",\"type\":\""; out += t.type; out += "\"}";
     }

@@ -457,8 +457,11 @@ String RfidModule::cardsToJson() const {
         if (i) out += ',';
         out += "{\"id\":" + String(_cards[i].id)
              + ",\"name\":\"" + _cards[i].name
+             + "\",\"label\":\"" + _cards[i].name
              + "\",\"uid\":\"" + _cards[i].uid
-             + "\",\"type\":\"" + _cards[i].type + "\"}";
+             + "\",\"format\":\"" + _cards[i].uid
+             + "\",\"type\":\"" + _cards[i].type
+             + "\",\"time\":\"\"}";
     }
     out += "]}";
     return out;
@@ -530,6 +533,34 @@ RfidGpioConfig RfidModule::loadGpioConfig() const {
 }
 
 // ── SD integration (features 22-24) ─────────────────────────
+
+bool RfidModule::backupToSD(const String& tag) {
+    if (!sdMgr.isAvailable()) return false;
+    File src = LittleFS.open(RFID_SAVE_FILE, "r");
+    if (!src) return false;
+    sdMgr.makeDir("/backups/" + tag);
+    File dst = sdMgr.openForWrite("/backups/" + tag + "/rfid_cards.json");
+    if (!dst) { src.close(); return false; }
+    uint8_t buf[256];
+    while (src.available()) { size_t n = src.read(buf, sizeof(buf)); dst.write(buf, n); }
+    src.close(); dst.close();
+    sdMgr.log("RFID backup: " + tag, SdLogLevel::INFO, "RFID");
+    return true;
+}
+
+bool RfidModule::restoreFromSD(const String& tag) {
+    if (!sdMgr.isAvailable()) return false;
+    String srcPath = "/backups/" + tag + "/rfid_cards.json";
+    String json = sdMgr.readTextFile(srcPath);
+    if (json.isEmpty()) return false;
+    File dst = LittleFS.open(RFID_SAVE_FILE, "w");
+    if (!dst) return false;
+    dst.print(json);
+    dst.close();
+    _loadCards();
+    sdMgr.log("RFID restore: " + tag, SdLogLevel::INFO, "RFID");
+    return true;
+}
 
 // Feature 23: load allowlist from SD
 bool RfidModule::loadAllowlistFromSD() {
@@ -624,4 +655,29 @@ void RfidModule::saveMacroMappings() {
     }
     f.print('}');
     f.close();
+}
+
+void RfidModule::removeMacroMapping(const String& uid) {
+    _macroMap.erase(uid.c_str());
+}
+
+String RfidModule::macroMappingsToJson() const {
+    JsonDocument doc;
+    JsonArray arr = doc.to<JsonArray>();
+    for (const auto& kv : _macroMap) {
+        JsonObject obj = arr.add<JsonObject>();
+        obj["uid"]   = kv.first;
+        obj["macro"] = kv.second;
+    }
+    String out; serializeJson(doc, out);
+    return out;
+}
+
+String RfidModule::allowlistToJson() const {
+    JsonDocument doc;
+    doc["enabled"] = _allowlistEnabled;
+    JsonArray arr = doc["uids"].to<JsonArray>();
+    for (const auto& uid : _allowlist) arr.add(uid);
+    String out; serializeJson(doc, out);
+    return out;
 }

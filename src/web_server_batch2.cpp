@@ -117,6 +117,46 @@ void WebUI::setupRuleRoutes() {
             req->send(r);
         });
 
+    // GET  /api/v1/rules/presets          - list saved presets (SD)
+    _server.on("/api/v1/rules/presets", HTTP_GET,
+        [this](AsyncWebServerRequest* req) { handleRulePresetList(req); });
+
+    // POST /api/v1/rules/presets/save     - save current rules as preset
+    B2_POST("/api/v1/rules/presets/save",
+        [this](AsyncWebServerRequest* req, uint8_t* d, size_t l) {
+            handleRulePresetSave(req, d, l); });
+
+    // POST /api/v1/rules/presets/load     - load preset into rules (merge)
+    B2_POST("/api/v1/rules/presets/load",
+        [this](AsyncWebServerRequest* req, uint8_t* d, size_t l) {
+            handleRulePresetLoad(req, d, l); });
+
+    // POST /api/v1/rules/export           - export rules to SD with a tag
+    B2_POST("/api/v1/rules/export",
+        [this](AsyncWebServerRequest* req, uint8_t* d, size_t l) {
+            handleRuleExport(req, d, l); });
+
+    // POST /api/v1/rules/import           - import rules from SD by tag
+    B2_POST("/api/v1/rules/import",
+        [this](AsyncWebServerRequest* req, uint8_t* d, size_t l) {
+            handleRuleImport(req, d, l); });
+
+    // ── UI alias routes (UI calls /api/rules/* not /api/v1/rules/*) ──
+    _server.on("/api/rules/presets", HTTP_GET,
+        [this](AsyncWebServerRequest* req) { handleRulePresetList(req); });
+    B2_POST("/api/rules/preset/save",
+        [this](AsyncWebServerRequest* req, uint8_t* d, size_t l) {
+            handleRulePresetSave(req, d, l); });
+    B2_POST("/api/rules/preset/load",
+        [this](AsyncWebServerRequest* req, uint8_t* d, size_t l) {
+            handleRulePresetLoad(req, d, l); });
+    B2_POST("/api/rules/export",
+        [this](AsyncWebServerRequest* req, uint8_t* d, size_t l) {
+            handleRuleExport(req, d, l); });
+    B2_POST("/api/rules/import",
+        [this](AsyncWebServerRequest* req, uint8_t* d, size_t l) {
+            handleRuleImport(req, d, l); });
+
     Serial.println("[WEB] Rule Engine routes registered");
 }
 
@@ -233,4 +273,109 @@ void WebUI::handleRuleFire(AsyncWebServerRequest* req) {
     ruleMgr.triggerManual(id);
     auditMgr.log(AuditSource::RULE, "RULE_MANUAL_FIRE", String("id=") + id);
     sendJsonB2(req, 200, "{\"ok\":true,\"fired\":" + String(id) + "}");
+}
+
+// ─────────────────────────────────────────────────────────────
+// GET /api/v1/rules/presets
+// Response: {"presets":["home","office","night"]}
+// ─────────────────────────────────────────────────────────────
+void WebUI::handleRulePresetList(AsyncWebServerRequest* req) {
+    if (!authMgr.checkAuth(req)) return;
+    auto names = ruleMgr.listRulePresets();
+    JsonDocument resp;
+    JsonArray arr = resp["presets"].to<JsonArray>();
+    for (const auto& n : names) arr.add(n);
+    String out; serializeJson(resp, out);
+    sendJsonB2(req, 200, out);
+}
+
+// ─────────────────────────────────────────────────────────────
+// POST /api/v1/rules/presets/save
+// Body: {"name":"home"}
+// ─────────────────────────────────────────────────────────────
+void WebUI::handleRulePresetSave(AsyncWebServerRequest* req, uint8_t* d, size_t l) {
+    if (!authMgr.checkAuth(req)) return;
+    JsonDocument body;
+    if (deserializeJson(body, d, l) != DeserializationError::Ok) {
+        sendJsonB2(req, 400, "{\"error\":\"Invalid JSON\"}"); return;
+    }
+    String name = body["name"] | "";
+    name.trim();
+    if (name.isEmpty()) {
+        sendJsonB2(req, 400, "{\"error\":\"Missing name\"}"); return;
+    }
+    if (!ruleMgr.saveRulePreset(name)) {
+        sendJsonB2(req, 503, "{\"error\":\"SD unavailable or write failed\"}"); return;
+    }
+    auditMgr.log(AuditSource::RULE, "RULE_PRESET_SAVED", name);
+    sendJsonB2(req, 200, "{\"ok\":true,\"name\":\"" + name + "\"}");
+}
+
+// ─────────────────────────────────────────────────────────────
+// POST /api/v1/rules/presets/load
+// Body: {"name":"home"}
+// Merges preset rules into current rule set (skips duplicates by name)
+// ─────────────────────────────────────────────────────────────
+void WebUI::handleRulePresetLoad(AsyncWebServerRequest* req, uint8_t* d, size_t l) {
+    if (!authMgr.checkAuth(req)) return;
+    JsonDocument body;
+    if (deserializeJson(body, d, l) != DeserializationError::Ok) {
+        sendJsonB2(req, 400, "{\"error\":\"Invalid JSON\"}"); return;
+    }
+    String name = body["name"] | "";
+    name.trim();
+    if (name.isEmpty()) {
+        sendJsonB2(req, 400, "{\"error\":\"Missing name\"}"); return;
+    }
+    if (!ruleMgr.loadRulePreset(name)) {
+        sendJsonB2(req, 404, "{\"error\":\"Preset not found or SD unavailable\"}"); return;
+    }
+    auditMgr.log(AuditSource::RULE, "RULE_PRESET_LOADED", name);
+    sendJsonB2(req, 200, "{\"ok\":true,\"name\":\"" + name + "\"}");
+}
+
+// ─────────────────────────────────────────────────────────────
+// POST /api/v1/rules/export
+// Body: {"tag":"backup_2025"}
+// Exports each rule as a separate JSON file under /sd/rules/<tag>/
+// ─────────────────────────────────────────────────────────────
+void WebUI::handleRuleExport(AsyncWebServerRequest* req, uint8_t* d, size_t l) {
+    if (!authMgr.checkAuth(req)) return;
+    JsonDocument body;
+    if (deserializeJson(body, d, l) != DeserializationError::Ok) {
+        sendJsonB2(req, 400, "{\"error\":\"Invalid JSON\"}"); return;
+    }
+    String tag = body["tag"] | "";
+    tag.trim();
+    if (tag.isEmpty()) {
+        sendJsonB2(req, 400, "{\"error\":\"Missing tag\"}"); return;
+    }
+    if (!ruleMgr.exportToSD(tag)) {
+        sendJsonB2(req, 503, "{\"error\":\"SD unavailable or export failed\"}"); return;
+    }
+    auditMgr.log(AuditSource::RULE, "RULE_EXPORTED", tag);
+    sendJsonB2(req, 200, "{\"ok\":true,\"tag\":\"" + tag + "\"}");
+}
+
+// ─────────────────────────────────────────────────────────────
+// POST /api/v1/rules/import
+// Body: {"tag":"backup_2025"}
+// Imports rules from /sd/rules/<tag>/ into LittleFS (merges)
+// ─────────────────────────────────────────────────────────────
+void WebUI::handleRuleImport(AsyncWebServerRequest* req, uint8_t* d, size_t l) {
+    if (!authMgr.checkAuth(req)) return;
+    JsonDocument body;
+    if (deserializeJson(body, d, l) != DeserializationError::Ok) {
+        sendJsonB2(req, 400, "{\"error\":\"Invalid JSON\"}"); return;
+    }
+    String tag = body["tag"] | "";
+    tag.trim();
+    if (tag.isEmpty()) {
+        sendJsonB2(req, 400, "{\"error\":\"Missing tag\"}"); return;
+    }
+    if (!ruleMgr.importFromSD(tag)) {
+        sendJsonB2(req, 404, "{\"error\":\"Tag not found or SD unavailable\"}"); return;
+    }
+    auditMgr.log(AuditSource::RULE, "RULE_IMPORTED", tag);
+    sendJsonB2(req, 200, "{\"ok\":true,\"tag\":\"" + tag + "\"}");
 }

@@ -93,6 +93,7 @@ public:
     bool restoreSignalsFromSD();
 
     bool replayFromSD(const String& filename);
+    std::vector<String> listSdSignals() const;
 
     bool sdLogEnabled() const { return _sdLog; }
     void setSdLog(bool en) { _sdLog = en; }

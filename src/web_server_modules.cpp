@@ -151,6 +151,58 @@ void WebUI::setupModuleRoutes() {
             _sendJson(req, 200, "{\"ok\":true}");
         });
 
+    // ── NFC SD integration ───────────────────────────────────
+
+    // POST /api/nfc/backup   body: {"tag":"mybackup"}
+    POST_BODY_MOD("/api/nfc/backup", [](AsyncWebServerRequest* req, uint8_t* d, size_t l) {
+        if (!authMgr.checkAuth(req)) return;
+        JsonDocument doc; deserializeJson(doc, d, l);
+        String tag = doc["tag"] | "";
+        if (tag.isEmpty()) { _sendJson(req, 400, "{\"error\":\"Missing tag\"}"); return; }
+        bool ok = nfcModule.backupToSD(tag);
+        _sendJson(req, ok ? 200 : 500, ok ? "{\"ok\":true}" : "{\"error\":\"Backup failed\"}");
+    });
+
+    // POST /api/nfc/restore   body: {"tag":"mybackup"}
+    POST_BODY_MOD("/api/nfc/restore", [](AsyncWebServerRequest* req, uint8_t* d, size_t l) {
+        if (!authMgr.checkAuth(req)) return;
+        JsonDocument doc; deserializeJson(doc, d, l);
+        String tag = doc["tag"] | "";
+        if (tag.isEmpty()) { _sendJson(req, 400, "{\"error\":\"Missing tag\"}"); return; }
+        bool ok = nfcModule.restoreFromSD(tag);
+        _sendJson(req, ok ? 200 : 500, ok ? "{\"ok\":true}" : "{\"error\":\"Restore failed\"}");
+    });
+
+    // POST /api/nfc/export/all   no body needed
+    _server.on("/api/nfc/export/all", HTTP_POST,
+        [](AsyncWebServerRequest* req) {
+            if (!authMgr.checkAuth(req)) return;
+            bool ok = nfcModule.exportAllFlipperToSD();
+            _sendJson(req, ok ? 200 : 500, ok ? "{\"ok\":true}" : "{\"error\":\"Export failed\"}");
+        });
+
+    // POST /api/nfc/sd/import   body: {"filename":"tag.nfc"}
+    POST_BODY_MOD("/api/nfc/sd/import", [](AsyncWebServerRequest* req, uint8_t* d, size_t l) {
+        if (!authMgr.checkAuth(req)) return;
+        JsonDocument doc; deserializeJson(doc, d, l);
+        String filename = doc["filename"] | "";
+        if (filename.isEmpty()) { _sendJson(req, 400, "{\"error\":\"Missing filename\"}"); return; }
+        bool ok = nfcModule.importTagFromSD(filename);
+        _sendJson(req, ok ? 200 : 500, ok ? "{\"ok\":true}" : "{\"error\":\"Import failed\"}");
+    });
+
+    // GET /api/nfc/sd/tags   list tags saved on SD
+    _server.on("/api/nfc/sd/tags", HTTP_GET, [](AsyncWebServerRequest* req) {
+        auto tags = nfcModule.listSdTags();
+        String out = "[";
+        for (size_t i = 0; i < tags.size(); i++) {
+            if (i) out += ",";
+            out += "\"" + tags[i] + "\"";
+        }
+        out += "]";
+        _sendJson(req, 200, "{\"ok\":true,\"tags\":" + out + "}");
+    });
+
     // POST /api/nfc/clone  body: tag JSON
     POST_BODY_MOD("/api/nfc/clone", [](AsyncWebServerRequest* req, uint8_t* d, size_t l) {
         if (!authMgr.checkAuth(req)) return;
@@ -344,6 +396,120 @@ void WebUI::setupModuleRoutes() {
             _sendJson(req, 200, "{\"ok\":true}");
         });
 
+    // ── RFID Allowlist ──────────────────────────────────────
+    // GET  /api/rfid/allowlist           — list all allowed UIDs
+    _server.on("/api/rfid/allowlist", HTTP_GET,
+        [](AsyncWebServerRequest* req) {
+            if (!authMgr.checkAuth(req)) return;
+            _sendJson(req, 200, rfidModule.allowlistToJson());
+        });
+
+    // POST /api/rfid/allowlist/add       — { "uid": "AABBCCDD" }
+    POST_BODY_MOD("/api/rfid/allowlist/add",
+        [](AsyncWebServerRequest* req, uint8_t* d, size_t l) {
+            if (!authMgr.checkAuth(req)) return;
+            JsonDocument doc; deserializeJson(doc, d, l);
+            String uid = doc["uid"] | "";
+            uid.trim();
+            if (uid.isEmpty()) { _sendJson(req, 400, "{\"error\":\"Missing uid\"}"); return; }
+            rfidModule.addToAllowlist(uid);
+            rfidModule.saveAllowlistToSD();
+            _sendJson(req, 200, "{\"ok\":true}");
+        });
+
+    // POST /api/rfid/allowlist/remove    — { "uid": "AABBCCDD" }
+    POST_BODY_MOD("/api/rfid/allowlist/remove",
+        [](AsyncWebServerRequest* req, uint8_t* d, size_t l) {
+            if (!authMgr.checkAuth(req)) return;
+            JsonDocument doc; deserializeJson(doc, d, l);
+            String uid = doc["uid"] | "";
+            uid.trim();
+            if (uid.isEmpty()) { _sendJson(req, 400, "{\"error\":\"Missing uid\"}"); return; }
+            rfidModule.removeFromAllowlist(uid);
+            rfidModule.saveAllowlistToSD();
+            _sendJson(req, 200, "{\"ok\":true}");
+        });
+
+    // POST /api/rfid/allowlist/save   — persist allowlist to SD
+    _server.on("/api/rfid/allowlist/save", HTTP_POST,
+        [](AsyncWebServerRequest* req) {
+            if (!authMgr.checkAuth(req)) return;
+            bool ok = rfidModule.saveAllowlistToSD();
+            _sendJson(req, ok ? 200 : 500, ok ? "{\"ok\":true}" : "{\"error\":\"Save failed\"}");
+        });
+
+    // POST /api/rfid/allowlist/load   — reload allowlist from SD
+    _server.on("/api/rfid/allowlist/load", HTTP_POST,
+        [](AsyncWebServerRequest* req) {
+            if (!authMgr.checkAuth(req)) return;
+            bool ok = rfidModule.loadAllowlistFromSD();
+            _sendJson(req, ok ? 200 : 500, ok ? "{\"ok\":true}" : "{\"error\":\"Load failed\"}");
+        });
+
+    // POST /api/rfid/backup    body: {"tag":"..."}
+    POST_BODY_MOD("/api/rfid/backup", [](AsyncWebServerRequest* req, uint8_t* d, size_t l) {
+        if (!authMgr.checkAuth(req)) return;
+        JsonDocument doc; deserializeJson(doc, d, l);
+        String tag = doc["tag"] | "";
+        if (tag.isEmpty()) { _sendJson(req, 400, "{\"error\":\"Missing tag\"}"); return; }
+        bool ok = rfidModule.backupToSD(tag);
+        _sendJson(req, ok ? 200 : 500, ok ? "{\"ok\":true}" : "{\"error\":\"Backup failed\"}");
+    });
+
+    // POST /api/rfid/restore   body: {"tag":"..."}
+    POST_BODY_MOD("/api/rfid/restore", [](AsyncWebServerRequest* req, uint8_t* d, size_t l) {
+        if (!authMgr.checkAuth(req)) return;
+        JsonDocument doc; deserializeJson(doc, d, l);
+        String tag = doc["tag"] | "";
+        if (tag.isEmpty()) { _sendJson(req, 400, "{\"error\":\"Missing tag\"}"); return; }
+        bool ok = rfidModule.restoreFromSD(tag);
+        _sendJson(req, ok ? 200 : 500, ok ? "{\"ok\":true}" : "{\"error\":\"Restore failed\"}");
+    });
+
+    // POST /api/rfid/allowlist/enable   body: {"enabled": true/false}
+    POST_BODY_MOD("/api/rfid/allowlist/enable", [](AsyncWebServerRequest* req, uint8_t* d, size_t l) {
+        if (!authMgr.checkAuth(req)) return;
+        JsonDocument doc; deserializeJson(doc, d, l);
+        rfidModule.setAllowlistEnabled(doc["enabled"] | false);
+        _sendJson(req, 200, "{\"ok\":true}");
+    });
+
+    // ── RFID Macro Mappings ─────────────────────────────────
+    // GET  /api/rfid/macros              — list all uid→macro mappings
+    _server.on("/api/rfid/macros", HTTP_GET,
+        [](AsyncWebServerRequest* req) {
+            if (!authMgr.checkAuth(req)) return;
+            _sendJson(req, 200, rfidModule.macroMappingsToJson());
+        });
+
+    // POST /api/rfid/macros/set          — { "uid": "AABBCCDD", "macro": "filename.json" }
+    POST_BODY_MOD("/api/rfid/macros/set",
+        [](AsyncWebServerRequest* req, uint8_t* d, size_t l) {
+            if (!authMgr.checkAuth(req)) return;
+            JsonDocument doc; deserializeJson(doc, d, l);
+            String uid   = doc["uid"]   | "";
+            String macro = doc["macro"] | "";
+            uid.trim(); macro.trim();
+            if (uid.isEmpty() || macro.isEmpty()) {
+                _sendJson(req, 400, "{\"error\":\"Missing uid or macro\"}"); return;
+            }
+            rfidModule.setMacroMapping(uid, macro);
+            rfidModule.saveMacroMappings();
+            _sendJson(req, 200, "{\"ok\":true}");
+        });
+
+    // POST /api/rfid/macros/remove       — { "uid": "AABBCCDD" }
+    POST_BODY_MOD("/api/rfid/macros/remove",
+        [](AsyncWebServerRequest* req, uint8_t* d, size_t l) {
+            if (!authMgr.checkAuth(req)) return;
+            JsonDocument doc; deserializeJson(doc, d, l);
+            String uid = doc["uid"] | "";
+            uid.trim();
+            if (uid.isEmpty()) { _sendJson(req, 400, "{\"error\":\"Missing uid\"}"); return; }
+            rfidModule.removeMacroMapping(uid);
+            rfidModule.saveMacroMappings();
+            _sendJson(req, 200, "{\"ok\":true}");
+        });
 
     // ── Sub-GHz ─────────────────────────────────────────────
     _server.on("/api/subghz/signals", HTTP_GET, [](AsyncWebServerRequest* req) {
@@ -420,6 +586,108 @@ void WebUI::setupModuleRoutes() {
         _sendJson(req, 200, ok ? "{\"ok\":true}" : "{\"error\":\"Not found\"}");
     });
 
+    // ── SubGHz SD integration ────────────────────────────────
+
+    // POST /api/subghz/backup   no body needed
+    _server.on("/api/subghz/backup", HTTP_POST,
+        [](AsyncWebServerRequest* req) {
+            if (!authMgr.checkAuth(req)) return;
+            bool ok = subGhzModule.backupSignalsToSD();
+            _sendJson(req, ok ? 200 : 500, ok ? "{\"ok\":true}" : "{\"error\":\"Backup failed\"}");
+        });
+
+    // POST /api/subghz/restore   no body needed
+    _server.on("/api/subghz/restore", HTTP_POST,
+        [](AsyncWebServerRequest* req) {
+            if (!authMgr.checkAuth(req)) return;
+            bool ok = subGhzModule.restoreSignalsFromSD();
+            _sendJson(req, ok ? 200 : 500, ok ? "{\"ok\":true}" : "{\"error\":\"Restore failed\"}");
+        });
+
+    // GET  /api/subghz/sd/signals  — list CSV/JSON files saved on SD
+    _server.on("/api/subghz/sd/signals", HTTP_GET, [](AsyncWebServerRequest* req) {
+        if (!authMgr.checkAuth(req)) return;
+        auto files = subGhzModule.listSdSignals();
+        JsonDocument doc;
+        JsonArray arr = doc["signals"].to<JsonArray>();
+        for (const auto& f : files) arr.add(f);
+        String out; serializeJson(doc, out);
+        _sendJson(req, 200, out);
+    });
+
+    // POST /api/subghz/sd/replay   body: {"filename":"signal.sub"}
+    POST_BODY_MOD("/api/subghz/sd/replay", [](AsyncWebServerRequest* req, uint8_t* d, size_t l) {
+        if (!authMgr.checkAuth(req)) return;
+        JsonDocument doc; deserializeJson(doc, d, l);
+        String filename = doc["filename"] | "";
+        if (filename.isEmpty()) { _sendJson(req, 400, "{\"error\":\"Missing filename\"}"); return; }
+        bool ok = subGhzModule.replayFromSD(filename);
+        _sendJson(req, ok ? 200 : 500, ok ? "{\"ok\":true}" : "{\"error\":\"Replay failed\"}");
+    });
+
+    // POST /api/subghz/sdlog   body: {"enabled": true/false}
+    POST_BODY_MOD("/api/subghz/sdlog", [](AsyncWebServerRequest* req, uint8_t* d, size_t l) {
+        if (!authMgr.checkAuth(req)) return;
+        JsonDocument doc; deserializeJson(doc, d, l);
+        subGhzModule.setSdLog(doc["enabled"] | false);
+        _sendJson(req, 200, "{\"ok\":true,\"sdlog\":" +
+                  String(subGhzModule.sdLogEnabled() ? "true" : "false") + "}");
+    });
+
+    // GET /api/subghz/modulation   — get current modulation
+    _server.on("/api/subghz/modulation", HTTP_GET, [](AsyncWebServerRequest* req) {
+        SubGhzModulation m = subGhzModule.getModulation();
+        String name = SubGhzModule::modulationName(m);
+        _sendJson(req, 200, "{\"ok\":true,\"modulation\":" + String((int)m) +
+                  ",\"name\":\"" + name + "\"}");
+    });
+
+    // POST /api/subghz/modulation   body: {"modulation": 0-3}
+    POST_BODY_MOD("/api/subghz/modulation", [](AsyncWebServerRequest* req, uint8_t* d, size_t l) {
+        if (!authMgr.checkAuth(req)) return;
+        JsonDocument doc; deserializeJson(doc, d, l);
+        SubGhzModulation mod = (SubGhzModulation)(doc["modulation"] | 0);
+        bool ok = subGhzModule.setModulation(mod);
+        _sendJson(req, ok ? 200 : 400, ok ? "{\"ok\":true}" : "{\"error\":\"Set modulation failed\"}");
+    });
+
+    // GET /api/subghz/presets   — list built-in modulation presets
+    _server.on("/api/subghz/presets", HTTP_GET, [](AsyncWebServerRequest* req) {
+        uint8_t count = 0;
+        const SubGhzPreset* presets = SubGhzModule::builtinPresets(count);
+        String out = "[";
+        for (uint8_t i = 0; i < count; i++) {
+            if (i) out += ",";
+            out += "{\"name\":\"";
+            out += presets[i].name;
+            out += "\",\"mod\":" + String((int)presets[i].mod);
+            out += ",\"freqMhz\":" + String(presets[i].freqMhz);
+            out += "}";
+        }
+        out += "]";
+        _sendJson(req, 200, "{\"ok\":true,\"presets\":" + out + "}");
+    });
+
+    // ── nRF24 SD integration ─────────────────────────────────
+
+    // POST /api/nrf24/backup   body: {"tag":"..."}
+    POST_BODY_MOD("/api/nrf24/backup", [](AsyncWebServerRequest* req, uint8_t* d, size_t l) {
+        if (!authMgr.checkAuth(req)) return;
+        JsonDocument doc; deserializeJson(doc, d, l);
+        String tag = doc["tag"] | "";
+        if (tag.isEmpty()) { _sendJson(req, 400, "{\"error\":\"Missing tag\"}"); return; }
+        bool ok = nrf24Module.backupConfigToSD(tag);
+        _sendJson(req, ok ? 200 : 500, ok ? "{\"ok\":true}" : "{\"error\":\"Backup failed\"}");
+    });
+
+    // POST /api/nrf24/sdlog    body: {"enabled": true/false}
+    POST_BODY_MOD("/api/nrf24/sdlog", [](AsyncWebServerRequest* req, uint8_t* d, size_t l) {
+        if (!authMgr.checkAuth(req)) return;
+        JsonDocument doc; deserializeJson(doc, d, l);
+        nrf24Module.setSdLog(doc["enabled"] | false);
+        _sendJson(req, 200, "{\"ok\":true,\"sdlog\":" +
+                  String(nrf24Module.sdLogEnabled() ? "true" : "false") + "}");
+    });
 
     POST_BODY_MOD("/api/nrf24/rc", [](AsyncWebServerRequest* req, uint8_t* d, size_t l) {
         if (!authMgr.checkAuth(req)) return;
@@ -965,6 +1233,66 @@ void WebUI::setupModuleRoutes() {
                  nfcModule.isConnected()    ? "true":"false",
                  sysModule.isLedActive()    ? "true":"false");
         _sendJson(req, 200, String(buf));
+    });
+
+    // ── System LED presets & diagnostics (SD integration) ────
+
+    // GET /api/system/led/presets   — list saved LED presets on SD
+    _server.on("/api/system/led/presets", HTTP_GET, [](AsyncWebServerRequest* req) {
+        auto presets = sysModule.listLedPresets();
+        String out = "[";
+        for (size_t i = 0; i < presets.size(); i++) {
+            if (i) out += ",";
+            out += "\"" + presets[i] + "\"";
+        }
+        out += "]";
+        _sendJson(req, 200, "{\"ok\":true,\"presets\":" + out + "}");
+    });
+
+    // POST /api/system/led/preset/save   body: {"name":"..."}
+    POST_BODY_MOD("/api/system/led/preset/save", [](AsyncWebServerRequest* req, uint8_t* d, size_t l) {
+        if (!authMgr.checkAuth(req)) return;
+        JsonDocument doc; deserializeJson(doc, d, l);
+        String name = doc["name"] | "";
+        if (name.isEmpty()) { _sendJson(req, 400, "{\"error\":\"Missing name\"}"); return; }
+        bool ok = sysModule.saveLedPreset(name);
+        _sendJson(req, ok ? 200 : 500, ok ? "{\"ok\":true}" : "{\"error\":\"Save preset failed\"}");
+    });
+
+    // POST /api/system/led/preset/load   body: {"name":"..."}
+    POST_BODY_MOD("/api/system/led/preset/load", [](AsyncWebServerRequest* req, uint8_t* d, size_t l) {
+        if (!authMgr.checkAuth(req)) return;
+        JsonDocument doc; deserializeJson(doc, d, l);
+        String name = doc["name"] | "";
+        if (name.isEmpty()) { _sendJson(req, 400, "{\"error\":\"Missing name\"}"); return; }
+        bool ok = sysModule.loadLedPreset(name);
+        _sendJson(req, ok ? 200 : 500, ok ? "{\"ok\":true}" : "{\"error\":\"Load preset failed\"}");
+    });
+
+    // POST /api/system/led/backup   body: {"tag":"..."}
+    POST_BODY_MOD("/api/system/led/backup", [](AsyncWebServerRequest* req, uint8_t* d, size_t l) {
+        if (!authMgr.checkAuth(req)) return;
+        JsonDocument doc; deserializeJson(doc, d, l);
+        String tag = doc["tag"] | "";
+        if (tag.isEmpty()) { _sendJson(req, 400, "{\"error\":\"Missing tag\"}"); return; }
+        bool ok = sysModule.backupLedConfigToSD(tag);
+        _sendJson(req, ok ? 200 : 500, ok ? "{\"ok\":true}" : "{\"error\":\"LED backup failed\"}");
+    });
+
+    // POST /api/system/led/restore   body: {"tag":"..."}
+    POST_BODY_MOD("/api/system/led/restore", [](AsyncWebServerRequest* req, uint8_t* d, size_t l) {
+        if (!authMgr.checkAuth(req)) return;
+        JsonDocument doc; deserializeJson(doc, d, l);
+        String tag = doc["tag"] | "";
+        if (tag.isEmpty()) { _sendJson(req, 400, "{\"error\":\"Missing tag\"}"); return; }
+        bool ok = sysModule.restoreLedConfigFromSD(tag);
+        _sendJson(req, ok ? 200 : 500, ok ? "{\"ok\":true}" : "{\"error\":\"LED restore failed\"}");
+    });
+
+    // GET /api/system/diagnostics   — dump diagnostics snapshot to SD and return status
+    _server.on("/api/system/diagnostics", HTTP_GET, [](AsyncWebServerRequest* req) {
+        bool ok = sysModule.dumpDiagnosticsToSD();
+        _sendJson(req, ok ? 200 : 500, ok ? "{\"ok\":true}" : "{\"error\":\"Diagnostics dump failed\"}");
     });
 }
 

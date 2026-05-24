@@ -418,8 +418,11 @@ String SubGhzModule::signalsToJson() const {
         out += "{\"id\":" + String(s.id)
              + ",\"name\":\"" + s.name
              + "\",\"freqMhz\":" + String(s.freqMhz, 2)
-             + ",\"protocol\":\"" + s.protocol
-             + "\",\"captured\":\"" + s.captured + "\"}";
+             + ",\"freq\":\"" + String(s.freqMhz, 2)
+             + "\",\"protocol\":\"" + s.protocol
+             + "\",\"modulation\":\"" + s.protocol
+             + "\",\"captured\":\"" + s.captured
+             + "\",\"duration\":\"" + s.captured + "\"}";
     }
     out += "]}";
     return out;
@@ -598,4 +601,15 @@ bool SubGhzModule::replayFromSD(const String& filename) {
     Serial.printf(SUBGHZ_TAG " Replayed from SD: %s (%u timings)\n",
                   filename.c_str(), (unsigned)timings.size());
     return true;
+}
+
+std::vector<String> SubGhzModule::listSdSignals() const {
+    std::vector<String> result;
+    if (!sdMgr.isAvailable()) return result;
+    auto entries = sdMgr.listDir("/subghz");
+    for (const auto& e : entries) {
+        if (!e.isDir && (e.name.endsWith(".csv") || e.name.endsWith(".json")))
+            result.push_back(e.name);
+    }
+    return result;
 }
