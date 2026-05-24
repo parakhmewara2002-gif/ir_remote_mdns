@@ -290,7 +290,15 @@ void NfcModule::_readMifareBlocks(NfcTag& tag) {
 
     uint8_t key[] = {0xFF,0xFF,0xFF,0xFF,0xFF,0xFF};
     uint8_t uid[4] = {};
-    for (int i = 0; i < 4 && i < (int)tag.uid.length()/3; i++) {
+    // PARSE FIX: tag.uid is formatted "AA:BB:CC:DD" so the last UID
+    // byte sits at offsets length-2..length-1 (no trailing colon).
+    // The previous integer-division (length/3) of "AA:BB:CC:DD" (len=11)
+    // gave 3 — we parsed only 3 of 4 bytes, then MIFARE auth failed and
+    // every block came back as "(locked)". Round up so the trailing byte
+    // is included.
+    int uidBytes = ((int)tag.uid.length() + 1) / 3;
+    if (uidBytes > 4) uidBytes = 4;
+    for (int i = 0; i < uidBytes; i++) {
         uid[i] = static_cast<uint8_t>(
             strtoul(tag.uid.substring(i*3, i*3+2).c_str(), nullptr, 16));
     }

@@ -189,8 +189,15 @@ size_t MicModule::_readI2S(int16_t* pcm, size_t maxSamples) {
 
 // ── ADC read -> PCM int16 ─────────────────────────────────────
 // ADC gives 0-4095 (12-bit). Center=2048, convert to -32768..32767
+// MUTEX FIX: take the same recursive mutex as _readI2S so concurrent
+// callers (streamer task + record-loop) cannot collide on _adcPins /
+// _adcGains / _volume member state.
 size_t MicModule::_readADC(int16_t* pcm, size_t maxSamples) {
     if (!_adcInited || _adcCount == 0) return 0;
+    if (!_readMutex) _readMutex = xSemaphoreCreateRecursiveMutex();
+    if (_readMutex &&
+        xSemaphoreTakeRecursive(_readMutex, pdMS_TO_TICKS(50)) != pdTRUE)
+        return 0;
 
     // How many samples per mic to fill maxSamples
     // FIX: ternary was inverted - when _adcCount>0 we divided by 1 (no division
@@ -226,6 +233,7 @@ size_t MicModule::_readADC(int16_t* pcm, size_t maxSamples) {
         if ((s & 31) == 31) vTaskDelay(1);
     }
     _volume = (uint8_t)(peak * 100 / 32768);
+    if (_readMutex) xSemaphoreGiveRecursive(_readMutex);
     return out;
 }
 

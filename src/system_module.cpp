@@ -30,6 +30,20 @@ void SystemModule::_initFastLED() {
     if (_ledCfg.numLeds == 0) return;
     uint8_t n = min((uint8_t)MAX_LEDS, _ledCfg.numLeds);
 
+    // FASTLED FIX: skip if already initialised. FastLED's controller
+    // list is append-only — clearData() zeros pixel buffers but NOT
+    // the controller chain, so every addLeds() call added a duplicate
+    // WS2812 driver. After a few preset loads .show() would write the
+    // same DMA buffer through N stacked controllers, dragging frame
+    // time and leaking driver state. Now: only the first call wires
+    // up the controller; subsequent loads just update brightness +
+    // refresh.
+    if (_fastledInited) {
+        FastLED.setBrightness(_ledCfg.brightness);
+        FastLED.clear(true);
+        return;
+    }
+
     // FastLED requires compile-time DATA_PIN template parameter.
     // GPIO2 is forbidden (boot strapping pin) - use GPIO13 instead.
     // GPIO13 is safe: not forbidden, not input-only, no other module uses it permanently.
