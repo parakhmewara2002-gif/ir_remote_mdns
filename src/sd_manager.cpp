@@ -840,10 +840,22 @@ bool SdManager::_deleteRecursiveImpl(const String& path) {
         f.close();
         return SD.remove(path);
     }
+    // FIX: child.name() may return basename only on some SD lib versions,
+    // or full path with leading '/' on others. Strip to basename and rebuild
+    // the full path from `path` so recursion targets the correct entry.
+    String dirPath = path;
+    if (dirPath.endsWith("/")) dirPath.remove(dirPath.length() - 1);
     File child = f.openNextFile();
     while (child) {
-        String childPath = String(child.name());
+        String raw = String(child.name());
         child.close();
+        int lastSlash = raw.lastIndexOf('/');
+        String base = (lastSlash >= 0) ? raw.substring(lastSlash + 1) : raw;
+        if (base.isEmpty() || base == "." || base == "..") {
+            child = f.openNextFile();
+            continue;
+        }
+        String childPath = dirPath + "/" + base;
         if (!_deleteRecursiveImpl(childPath)) {
             f.close();
             return false;

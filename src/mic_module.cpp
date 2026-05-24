@@ -182,7 +182,12 @@ size_t MicModule::_readADC(int16_t* pcm, size_t maxSamples) {
     if (!_adcInited || _adcCount == 0) return 0;
 
     // How many samples per mic to fill maxSamples
-    size_t sampPerMic = maxSamples / (_adcCount > 0 ? 1 : _adcCount);
+    // FIX: ternary was inverted - when _adcCount>0 we divided by 1 (no division
+    // at all) instead of by _adcCount. Result: _adcCount=2 made sampPerMic =
+    // maxSamples (not maxSamples/2), and inner mixing loop wrote the same slot
+    // twice. _adcCount==0 path is already guarded above so the protection is
+    // redundant, but keep min(1) for safety.
+    size_t sampPerMic = maxSamples / (_adcCount > 0 ? _adcCount : 1);
     if (sampPerMic > 128) sampPerMic = 128; // keep loop fast
 
     // Delay between samples to approximate sample rate

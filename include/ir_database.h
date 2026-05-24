@@ -23,8 +23,11 @@
 // ============================================================
 #include <Arduino.h>
 #include <vector>
+#include <unordered_map>
 #include <LittleFS.h>
 #include <ArduinoJson.h>
+#include <freertos/FreeRTOS.h>
+#include <freertos/semphr.h>
 #include "ir_button.h"
 #include "config.h"
 
@@ -69,8 +72,6 @@ public:
 
     // Lookup by ID; returns default IRButton (id==0) if not found.
     // Returns by value with the spinlock held - safe across tasks.
-#include <unordered_map>   // O(1) index for findById / findByName
-
     IRButton findById(uint32_t id) const;
 
     // FIX: O(1) name lookup via hash map - was O(N) linear scan.
@@ -137,8 +138,6 @@ public:
 
     // Feature 2: SD overflow flag - set when LittleFS is too full and button was spilled to SD
     bool isSdOverflow() const { return _sdOverflow; }
-
-#include <freertos/semphr.h>
 
 private:
     std::vector<IRButton> _buttons;

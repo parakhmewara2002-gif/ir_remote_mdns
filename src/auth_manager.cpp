@@ -178,10 +178,11 @@ String AuthManager::statusJson() const {
          + ",\"firstLogin\":"      + (_firstLogin?"true":"false")
          + ",\"sessions\":"        + _sessions.size()
          + ",\"locked\":"          + (locked?"true":"false");
-    // Expose default password ONLY on first login so UI can show it to user
-    if (_firstLogin && !_defaultPass.isEmpty()) {
-        json += ",\"defaultPass\":\"" + _defaultPass + "\"";
-    }
+    // SECURITY FIX: Do NOT include the default password in the JSON status.
+    // Previously this leaked the device-unique default to ANY unauthenticated
+    // caller on the LAN/AP while _firstLogin was true. The default password
+    // is already printed to the serial console in begin() so the operator
+    // who flashed the device can read it from there.
     json += "}";
     return json;
 }

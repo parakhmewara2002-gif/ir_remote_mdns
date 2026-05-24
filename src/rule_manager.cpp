@@ -64,7 +64,11 @@ void RuleManager::triggerRfidScan(const String& uid,
                                    const String& cardName,
                                    bool known) {
     if (!known) {
+        // FIX: previously fell through and also iterated RFID_SCAN rules,
+        // firing scan-rules for unknown cards. Unknown cards must only
+        // fire RFID_UNKNOWN rules.
         _fireTrigger(RuleTrigger::RFID_UNKNOWN, uid);
+        return;
     }
     // FIX: was calling listRules() here independently - caused two full
     // LittleFS scans per RFID event. Now uses shared cache via _getCachedRules().
