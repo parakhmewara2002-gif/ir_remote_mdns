@@ -154,13 +154,19 @@ void AcDetector::_updateBuzzer(float rms) {
         interval = (uint32_t)(500 - factor * 450);  // 500ms → 50ms
     }
 
+    // Non-blocking buzzer LOW after 10ms pulse
+    if (_buzzerOn && (millis() - _buzzerHighMs >= 10)) {
+        digitalWrite(_cfg.buzzerPin, LOW);
+        _buzzerOn = false;
+    }
+
     if (now - _lastBuzzerMs >= interval) {
         _lastBuzzerMs = now;
         if (rms >= _cfg.threshold) {
-            // Short beep
+            // Short beep - set HIGH now, LOW will be applied non-blockingly above
             digitalWrite(_cfg.buzzerPin, HIGH);
-            delay(10);
-            digitalWrite(_cfg.buzzerPin, LOW);
+            _buzzerHighMs = millis();
+            _buzzerOn = true;
         }
     }
 }

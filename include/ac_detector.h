@@ -123,6 +123,7 @@ private:
 
     // Buzzer state
     bool     _buzzerOn;
+    unsigned long _buzzerHighMs = 0;  // millis() when buzzer pin was set HIGH
 
     float    _calcRms() const;
     void     _updateBuzzer(float rms);

@@ -58,9 +58,9 @@ public:
     bool     startRead();
     void     stopRead();
     bool     isReading()     const { return _reading; }
-    NfcTag   lastTag()       const { return _lastTag; }
-    bool     tagAvailable()  const { return _tagReady; }
-    void     clearTag()            { _tagReady = false; }
+    NfcTag   lastTag()       const;
+    bool     tagAvailable()  const;
+    void     clearTag();
 
     bool     startCloneRead();
     bool     writeClone();
@@ -100,6 +100,7 @@ public:
     bool importTagFromSD(const String& filename);
 
 private:
+    SemaphoreHandle_t _nfcMutex  = nullptr;
     SPIClass*     _nfcSpi      = nullptr;  // dedicated SPI instance for PN532 SPI mode
     bool          _hwConnected   = false;
     bool          _moduleEnabled  = false;

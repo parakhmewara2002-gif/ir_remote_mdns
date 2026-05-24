@@ -101,6 +101,8 @@ void SubGhzModule::setEnabled(bool en) {
         _hwConnected = false;
         // Put CC1101 to sleep via SPI if still alive
         if (_cc1101Spi) {
+            bool vspiDis = (cfg.spiBus != 1);
+            if (vspiDis) xSemaphoreTake(g_spi_vspi_mutex, pdMS_TO_TICKS(100));
             // SPWD strobe = 0x39 - puts CC1101 in power-down mode
             pinMode(cfg.cs, OUTPUT);
             _cc1101Spi->beginTransaction(SPISettings(4000000,MSBFIRST,SPI_MODE0));
@@ -111,6 +113,7 @@ void SubGhzModule::setEnabled(bool en) {
             _cc1101Spi->end();
             delete _cc1101Spi;
             _cc1101Spi = nullptr;
+            if (vspiDis) xSemaphoreGive(g_spi_vspi_mutex);
         }
         // Release GDO pins
         if (cfg.gdo0 > 0) pinMode(cfg.gdo0, INPUT);
@@ -341,6 +344,10 @@ bool SubGhzModule::replaySignal(uint32_t id) {
     if (!_hwConnected) return false;
     SubGhzSignal sig;
     if (!getSignal(id, sig)) return false;
+
+    bool vspi = (_cfg.spiBus != 1);
+    if (vspi) xSemaphoreTake(g_spi_vspi_mutex, pdMS_TO_TICKS(100));
+
     _setFrequency(sig.freqMhz);
     _setModeTx();
 
@@ -365,6 +372,9 @@ bool SubGhzModule::replaySignal(uint32_t id) {
         high = !high;
     }
     _setModeIdle();
+
+    if (vspi) xSemaphoreGive(g_spi_vspi_mutex);
+
     Serial.printf(SUBGHZ_TAG " Replayed signal #%u\n", id);
     return true;
 }
@@ -589,6 +599,9 @@ bool SubGhzModule::replayFromSD(const String& filename) {
     if (timings.empty()) return false;
 
     // Replay timings using CC1101
+    bool vspi = (_cfg.spiBus != 1);
+    if (vspi) xSemaphoreTake(g_spi_vspi_mutex, pdMS_TO_TICKS(100));
+
     _setFrequency(freqFromFile);
     _setModeTx();
     bool high = true;
@@ -598,6 +611,9 @@ bool SubGhzModule::replayFromSD(const String& filename) {
         high = !high;
     }
     _setModeIdle();
+
+    if (vspi) xSemaphoreGive(g_spi_vspi_mutex);
+
     Serial.printf(SUBGHZ_TAG " Replayed from SD: %s (%u timings)\n",
                   filename.c_str(), (unsigned)timings.size());
     return true;

@@ -386,7 +386,7 @@ void WebUI::setupSdExtRoutes() {
                 _sendJsonSd(req, 503, "{\"error\":\"SD not available\"}"); return;
             }
             _sendJsonSd(req, 200, "{\"ok\":true,\"msg\":\"Rebooting with SD restore\"}");
-            delay(500);
+            vTaskDelay(pdMS_TO_TICKS(500));
             sdMgr.factoryResetWithRestore();
         });
 

@@ -568,8 +568,15 @@ void WebUI::setupModuleRoutes() {
         if (!authMgr.checkAuth(req)) return;
         JsonDocument doc; deserializeJson(doc, d, l);
         uint32_t id = doc["id"] | 0u;
-        bool ok = subGhzModule.replaySignal(id);
-        _sendJson(req, 200, ok ? "{\"ok\":true}" : "{\"error\":\"Signal not found\"}");
+        if (id == 0) { _sendJson(req, 400, "{\"error\":\"Missing id\"}"); return; }
+        _sendJson(req, 202, "{\"ok\":true,\"queued\":true}");
+        uint32_t* arg = new uint32_t(id);
+        xTaskCreate([](void* p) {
+            uint32_t sid = *reinterpret_cast<uint32_t*>(p);
+            delete reinterpret_cast<uint32_t*>(p);
+            subGhzModule.replaySignal(sid);
+            vTaskDelete(NULL);
+        }, "subghz_replay", 4096, arg, 1, nullptr);
     });
 
     POST_BODY_MOD("/api/subghz/delete", [](AsyncWebServerRequest* req, uint8_t* d, size_t l) {
@@ -621,8 +628,14 @@ void WebUI::setupModuleRoutes() {
         JsonDocument doc; deserializeJson(doc, d, l);
         String filename = doc["filename"] | "";
         if (filename.isEmpty()) { _sendJson(req, 400, "{\"error\":\"Missing filename\"}"); return; }
-        bool ok = subGhzModule.replayFromSD(filename);
-        _sendJson(req, ok ? 200 : 500, ok ? "{\"ok\":true}" : "{\"error\":\"Replay failed\"}");
+        _sendJson(req, 202, "{\"ok\":true,\"queued\":true}");
+        String* arg = new String(filename);
+        xTaskCreate([](void* p) {
+            String fname = *reinterpret_cast<String*>(p);
+            delete reinterpret_cast<String*>(p);
+            subGhzModule.replayFromSD(fname);
+            vTaskDelete(NULL);
+        }, "subghz_sd_replay", 4096, arg, 1, nullptr);
     });
 
     // POST /api/subghz/sdlog   body: {"enabled": true/false}
@@ -1356,6 +1369,6 @@ void WebUI::setupModuleToggleRoutes() {
                 Serial.printf("[MOD] %s -> %s\n", a->mod, a->en ? "ON" : "OFF");
                 delete a;
                 vTaskDelete(NULL);
-            }, "mod_toggle", 4096, args, 1, nullptr);
+            }, "mod_toggle", 8192, args, 1, nullptr);
         }));
 }

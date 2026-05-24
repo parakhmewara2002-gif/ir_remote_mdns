@@ -187,7 +187,7 @@ void RfidModule::loop() {
                 ruleMgr.triggerRfidScan(uid, _lastCard.name, known);
                 auditMgr.logSystem(("RFID_SCAN:" + uid).c_str());
                 // Broadcast card event to all connected WebSocket clients
-                webUI.broadcastMessage(
+                webUI.broadcastRaw(
                     String("{\"event\":\"rfid\",\"uid\":\"") + uid +
                     "\",\"type\":\"" + _lastCard.type +
                     "\",\"name\":\"" + _lastCard.name + "\"}");

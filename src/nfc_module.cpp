@@ -116,9 +116,30 @@ void NfcModule::setEnabled(bool en) {
 }
 
 void NfcModule::begin() {
+    if (!_nfcMutex) _nfcMutex = xSemaphoreCreateMutex();
     _loadTags();
     _cfg = loadGpioConfig();
     _initPN532();
+}
+
+NfcTag NfcModule::lastTag() const {
+    if (_nfcMutex) xSemaphoreTake(_nfcMutex, portMAX_DELAY);
+    NfcTag t = _lastTag;
+    if (_nfcMutex) xSemaphoreGive(_nfcMutex);
+    return t;
+}
+
+bool NfcModule::tagAvailable() const {
+    if (_nfcMutex) xSemaphoreTake(_nfcMutex, portMAX_DELAY);
+    bool v = _tagReady;
+    if (_nfcMutex) xSemaphoreGive(_nfcMutex);
+    return v;
+}
+
+void NfcModule::clearTag() {
+    if (_nfcMutex) xSemaphoreTake(_nfcMutex, portMAX_DELAY);
+    _tagReady = false;
+    if (_nfcMutex) xSemaphoreGive(_nfcMutex);
 }
 
 void NfcModule::loop() {
@@ -130,6 +151,8 @@ void NfcModule::loop() {
     if (_emulating) {
         if (millis() - _emulateTimer >= 300) {
             _emulateTimer = millis();
+            bool vspiEmu = (_cfg.iface == NfcIface::SPI && _cfg.spiBus != 1);
+            if (vspiEmu) xSemaphoreTake(g_spi_vspi_mutex, pdMS_TO_TICKS(100));
             Adafruit_PN532* pn = _getNfc(_nfc);
             uint8_t rxBuf[64] = {};
             uint8_t rxLen = sizeof(rxBuf);
@@ -148,13 +171,17 @@ void NfcModule::loop() {
             if (_emulating) {
                 pn->AsTarget();
             }
+            if (vspiEmu) xSemaphoreGive(g_spi_vspi_mutex);
         }
         return; // skip normal read/dict while emulating
     }
 
     if (_reading && millis() - _pollTimer >= NFC_POLL_MS) {
         _pollTimer = millis();
+        bool vspi = (_cfg.iface == NfcIface::SPI && _cfg.spiBus != 1);
+        if (vspi) xSemaphoreTake(g_spi_vspi_mutex, pdMS_TO_TICKS(100));
         _pollForTag();
+        if (vspi) xSemaphoreGive(g_spi_vspi_mutex);
     }
 
     // Dict attack tick
@@ -162,8 +189,11 @@ void NfcModule::loop() {
         _dictTimer = millis();
         if (_dictSector < 16 && _dictKeyIdx < MIFARE_DICT_LEN) {
             // Try current key for current sector + key type (0=KeyA, 1=KeyB)
+            bool vspiDict = (_cfg.iface == NfcIface::SPI && _cfg.spiBus != 1);
+            if (vspiDict) xSemaphoreTake(g_spi_vspi_mutex, pdMS_TO_TICKS(100));
             bool found = _tryMifareKey(_dictSector, _dictKeyType,
                                        MIFARE_DICT_KEYS[_dictKeyIdx]);
+            if (vspiDict) xSemaphoreGive(g_spi_vspi_mutex);
             if (found) {
                 String line = "S";
                 line += _dictSector;
@@ -245,9 +275,11 @@ void NfcModule::_pollForTag() {
         _readMifareBlocks(tag);
     }
 
+    if (_nfcMutex) xSemaphoreTake(_nfcMutex, portMAX_DELAY);
     _lastTag  = tag;
     _tagReady = true;
     _reading  = false;
+    if (_nfcMutex) xSemaphoreGive(_nfcMutex);
 
     // Feature 20: NFC scan -> SD log
     if (sdMgr.isAvailable())
@@ -278,7 +310,7 @@ void NfcModule::_pollForTag() {
     }
     ruleMgr.triggerNfcScan(tag.uid, tagName);
     auditMgr.logSystem(("NFC_SCAN:" + tag.uid).c_str());
-    webUI.broadcastMessage(
+    webUI.broadcastRaw(
         String("{\"event\":\"nfc\",\"uid\":\"") + tag.uid +
         "\",\"type\":\"" + tag.type +
         "\",\"name\":\"" + tagName + "\"}");

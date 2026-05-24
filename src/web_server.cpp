@@ -373,7 +373,7 @@ void WebUI::setupApiRoutes() {
         ([this](AsyncWebServerRequest* req, uint8_t* d, size_t l){
             handleUpdateButton(req, d, l); }));
 
-    _server.on("/api/buttons/delete", HTTP_GET,
+    _server.on("/api/buttons/delete", HTTP_POST,
         [this](AsyncWebServerRequest* req) { handleDeleteButton(req); });
 
     _server.on("/api/clear", HTTP_POST,
@@ -466,7 +466,7 @@ void WebUI::setupGroupRoutes() {
         ([this](AsyncWebServerRequest* req, uint8_t* d, size_t l){
             handleUpdateGroup(req, d, l); }));
 
-    _server.on("/api/groups/delete", HTTP_GET,
+    _server.on("/api/groups/delete", HTTP_POST,
         [this](AsyncWebServerRequest* req) { handleDeleteGroup(req); });
 
     POST_BODY("/api/groups/reorder",
@@ -487,7 +487,7 @@ void WebUI::setupSchedulerRoutes() {
         ([this](AsyncWebServerRequest* req, uint8_t* d, size_t l){
             handleUpdateSchedule(req, d, l); }));
 
-    _server.on("/api/schedules/delete", HTTP_GET,
+    _server.on("/api/schedules/delete", HTTP_POST,
         [this](AsyncWebServerRequest* req) { handleDeleteSchedule(req); });
 
     POST_BODY("/api/schedules/toggle",
@@ -648,6 +648,7 @@ void WebUI::handleDeleteButton(AsyncWebServerRequest* req) {
 }
 
 void WebUI::handleTransmit(AsyncWebServerRequest* req, uint8_t* d, size_t l) {
+    if (!authMgr.checkAuth(req)) return;
     JsonDocument doc;
     if (deserializeJson(doc,d,l)!=DeserializationError::Ok)
         { sendJson(req,400,"{\"error\":\"JSON parse failed\"}"); return; }
@@ -1104,6 +1105,7 @@ void WebUI::handleGetAutoSave(AsyncWebServerRequest* req) {
 }
 
 void WebUI::handleSetAutoSave(AsyncWebServerRequest* req) {
+    if (!authMgr.checkAuth(req)) return;
     if (!req->hasParam("enabled")) {
         sendJson(req, 400, "{\"error\":\"Missing 'enabled' param - use ?enabled=true or ?enabled=false\"}");
         return;
@@ -1259,7 +1261,9 @@ void WebUI::broadcastMessage(const String& text) {
 
 void WebUI::broadcastBinary(const uint8_t* data, size_t len) {
     if (_ws.count() == 0 || !data || len == 0) return;
+    if (!_wsMutex || xSemaphoreTake(_wsMutex, pdMS_TO_TICKS(10)) != pdTRUE) return;
     _ws.binaryAll(const_cast<uint8_t*>(data), len);
+    xSemaphoreGive(_wsMutex);
 }
 
 // Send pre-serialized JSON directly to all WS clients via the safe push queue.
@@ -1518,7 +1522,7 @@ void WebUI::setupMacroRoutes() {
     POST_BODY("/api/macro",
         [this](AsyncWebServerRequest* req, uint8_t* d, size_t l)
             { handleMacroSave(req, d, l); });
-    _server.on("/api/macro/delete", HTTP_GET,
+    _server.on("/api/macro/delete", HTTP_POST,
         [this](AsyncWebServerRequest* req) { handleMacroDelete(req); });
     _server.on("/api/macro/run", HTTP_GET,
         [this](AsyncWebServerRequest* req) { handleMacroRun(req); });
@@ -1649,7 +1653,7 @@ void WebUI::setupSdRoutes() {
     _server.on("/api/sd/ls", HTTP_GET,
         [this](AsyncWebServerRequest* req) { handleSdList(req); });
 
-    _server.on("/api/sd/delete", HTTP_GET,
+    _server.on("/api/sd/delete", HTTP_POST,
         [this](AsyncWebServerRequest* req) { handleSdDelete(req); });
 
     POST_BODY("/api/sd/rename",
@@ -1756,7 +1760,7 @@ void WebUI::setupSdRoutes() {
         ([this](AsyncWebServerRequest* req, uint8_t* d, size_t l) {
             handleSdMove(req, d, l); }));
 
-    _server.on("/api/sd/rmrf", HTTP_GET,
+    _server.on("/api/sd/rmrf", HTTP_POST,
         [this](AsyncWebServerRequest* req) { handleSdDeleteRecursive(req); });
 
     _server.on("/api/sd/info", HTTP_GET,

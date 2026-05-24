@@ -113,6 +113,8 @@ void Nrf24Module::loop() {
         _scanTimer = millis();
         uint8_t start = _scanChunkPos;
         uint8_t end   = (uint8_t)min((int)start + NRF24_SCAN_CHUNK, (int)NRF24_CHANNELS);
+        bool vspiScan = (_cfg.spiBus != 1);
+        if (vspiScan) xSemaphoreTake(g_spi_vspi_mutex, pdMS_TO_TICKS(100));
         _radio->stopListening();
         for (uint8_t ch = start; ch < end; ch++) {
             _radio->setChannel(ch);
@@ -129,6 +131,7 @@ void Nrf24Module::loop() {
         // Restore channel and listening mode after each chunk
         _radio->setChannel(_channel);
         _radio->startListening();
+        if (vspiScan) xSemaphoreGive(g_spi_vspi_mutex);
     }
 
     // ── Sniffer ──────────────────────────────────────────────
@@ -138,9 +141,15 @@ void Nrf24Module::loop() {
         Serial.println(NRF24_TAG " Sniffer auto-stopped after 5 min timeout");
     }
     if (_sniffing) {
-        if (_radio->available()) {
+        bool vspiSniff = (_cfg.spiBus != 1);
+        if (vspiSniff) xSemaphoreTake(g_spi_vspi_mutex, pdMS_TO_TICKS(100));
+        bool avail = _radio->available();
+        if (vspiSniff) xSemaphoreGive(g_spi_vspi_mutex);
+        if (avail) {
+            if (vspiSniff) xSemaphoreTake(g_spi_vspi_mutex, pdMS_TO_TICKS(100));
             uint8_t buf[32] = {};
             _radio->read(buf, 32);
+            if (vspiSniff) xSemaphoreGive(g_spi_vspi_mutex);
             char hex[65];
             for (int i = 0; i < 32; i++)
                 snprintf(hex + i*2, 3, "%02X", buf[i]);
@@ -244,6 +253,8 @@ void Nrf24Module::stopReplayCapture() {
 
 bool Nrf24Module::replayPackets() {
     if (!_hwConnected || _replayBuf.empty()) return false;
+    bool vspi = (_cfg.spiBus != 1);
+    if (vspi) xSemaphoreTake(g_spi_vspi_mutex, pdMS_TO_TICKS(100));
     const uint8_t addr[6] = "1Node";
     _radio->openWritingPipe(addr);
     _radio->stopListening();
@@ -256,10 +267,13 @@ bool Nrf24Module::replayPackets() {
             buf[i] = (uint8_t)strtol(h, nullptr, 16);
         }
         _radio->write(buf, 32);
+        if (vspi) xSemaphoreGive(g_spi_vspi_mutex);
         vTaskDelay(pdMS_TO_TICKS(2));  // FIX: yield to RTOS; delay() in hw_poll blocks siblings
+        if (vspi) xSemaphoreTake(g_spi_vspi_mutex, pdMS_TO_TICKS(100));
     }
     _radio->setChannel(_channel);
     _radio->startListening();
+    if (vspi) xSemaphoreGive(g_spi_vspi_mutex);
     Serial.printf(NRF24_TAG " Replayed %u packets\n",
                   (unsigned)_replayBuf.size());
     return true;
@@ -268,12 +282,15 @@ bool Nrf24Module::replayPackets() {
 // ─────────────────────────────────────────────────────────────
 void Nrf24Module::sendRcCommand(char dir, uint8_t speed) {
     if (!_hwConnected || !_radio) return;
+    bool vspi = (_cfg.spiBus != 1);
+    if (vspi) xSemaphoreTake(g_spi_vspi_mutex, pdMS_TO_TICKS(100));
     const uint8_t addr[6] = "RCCAR";
     _radio->openWritingPipe(addr);
     _radio->stopListening();
     uint8_t payload[4] = {(uint8_t)dir, speed, 0, 0};
     _radio->write(payload, 4);
     _radio->startListening();
+    if (vspi) xSemaphoreGive(g_spi_vspi_mutex);
     Serial.printf(NRF24_TAG " RC dir=%c speed=%u\n", dir, speed);
 }
 
