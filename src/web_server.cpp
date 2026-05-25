@@ -1715,6 +1715,10 @@ void WebUI::setupSdRoutes() {
 
 
     // Backup / Restore
+    POST_BODY("/api/sd/encrypt",
+        ([](AsyncWebServerRequest* req, uint8_t*, size_t) {
+            _sendJson(req, 501, "{\"ok\":false,\"error\":\"File encryption not implemented\"}"); }));
+
     POST_BODY("/api/sd/backup",
         ([this](AsyncWebServerRequest* req, uint8_t* d, size_t l) {
             handleSdBackup(req, d, l); }));
