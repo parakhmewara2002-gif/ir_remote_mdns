@@ -94,6 +94,7 @@ public:
     bool     isSafeMode()          const { return _bootState.safeMode; }
     uint8_t  bootFailCount()       const { return _bootState.failCount; }
     void     markBootSuccess();
+    void     resetLoopTimer() { _lastLoopMs = millis(); }
 
     void         setPerfMode(WdtPerfMode mode);
     WdtPerfMode  getPerfMode()     const { return _perfMode; }

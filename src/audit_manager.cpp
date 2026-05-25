@@ -33,7 +33,9 @@ void AuditManager::begin() {
 // ─────────────────────────────────────────────────────────────
 void AuditManager::loop() {
     if (_dirty && (millis() - _lastSave >= AUDIT_SAVE_INTERVAL_MS)) {
-        save();
+        // LittleFS write needs ~8KB heap for its internal page buffer.
+        // Skip this tick if heap is low — next tick will retry.
+        if (ESP.getFreeHeap() >= 24000) save();
     }
 }
 

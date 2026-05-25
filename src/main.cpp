@@ -234,8 +234,12 @@ void setup() {
     //   hw_poll (Core 1, priority 2): polls NFC/RFID/SubGHz/NRF24
     // loop() will no longer call those modules directly.
     taskMgr.begin();
-
+    // Reset WDT loop timer AFTER taskMgr.begin() so the gap between
+    // wdtMgr.begin() (mid-setup) and first loop() tick is not counted
+    // as a stall — that gap is setup() finishing, not a runtime freeze.
+    wdtMgr.resetLoopTimer();
 }
+
 
 // ─────────────────────────────────────────────────────────────
 void loop() {
