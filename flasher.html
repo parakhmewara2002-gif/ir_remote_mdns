@@ -823,10 +823,7 @@ async function connectDevice(){
   connectBtn.disabled=true;
   try{
     log('Port select karo...');
-    port=await navigator.serial.requestPort({filters:[
-      {usbVendorId:0x10C4},{usbVendorId:0x1A86},{usbVendorId:0x0403},
-      {usbVendorId:0x239A},{usbVendorId:0x303A},
-    ]});
+    port=await navigator.serial.requestPort({filters:[]});
     const baud=parseInt(document.getElementById('baud').value);
     await port.open({baudRate:baud});
     log('Connected @ '+baud+' baud ✅','ok');
