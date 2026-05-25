@@ -60,6 +60,31 @@ Legend: ✅ fully wired
 
 ---
 
+## ⚡ Web Flasher — No Install Required
+
+Flash your ESP32 directly from the browser — no drivers, no Python, no esptool needed.
+Works on **Desktop Chrome / Edge** and **Android Chrome v89+** (via USB OTG).
+
+> 🔗 **[Open Web Flasher](https://htmlpreview.github.io/?https://github.com/parakhmewara2002-gif/ir_remote_mdns/blob/master/flasher.html)**
+
+| | |
+|---|---|
+| ✅ Desktop | Chrome / Edge — direct USB |
+| ✅ Android | Chrome v89+ — USB OTG adapter needed |
+| ❌ iOS | WebSerial not supported |
+| ❌ Firefox / Safari | WebSerial not supported |
+
+**Steps:**
+1. Open the link above in Chrome or Edge
+2. Click **Download Firmware** — fetches all 4 `.bin` files from latest release
+3. Click **Connect** — select your ESP32 COM port
+4. *(Optional)* Click **Erase Flash** on first install
+5. Click **Flash Now** — done in ~30 seconds
+
+> 💡 Android users: plug ESP32 into your phone via a **USB OTG adapter**, then open Chrome and tap Connect.
+
+---
+
 ## Quick start
 
 ### 1. Flash a built release
@@ -252,3 +277,4 @@ in detail; v8-v10 notes are still being backfilled).
 See `LICENSE`. The codebase pulls in third-party libraries (FastLED,
 IRremoteESP8266, ESPAsyncWebServer, ArduinoJson, RF24, Adafruit
 PN532, Adafruit BusIO) under their respective licenses.
+
