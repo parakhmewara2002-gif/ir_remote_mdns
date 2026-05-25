@@ -505,8 +505,9 @@ const BLOCK_SIZE=0x200;   // ESP32 flash block size
 const BACKUP_SIZE=0x100000; // 1MB default firmware backup size
 
 let port=null,bufs={},monitoring=false,monReader=null;
-let flashing=false; // flash lock
+let flashing=false;
 let flashStartTime=0,flashTotalBytes=0,flashDoneBytes=0;
+let _manualBootReady=false;
 let errorCount=0,totalWrites=0;
 const LOG_MAX=120;
 
@@ -1339,21 +1340,54 @@ async function flushSerial(){
     }
   }finally{try{reader.releaseLock();}catch{}}
 }
+async function waitForManualBoot(){
+  _manualBootReady=false;
+  // Show manual boot button in UI
+  let resolveWait;
+  const p=new Promise(r=>{resolveWait=r;});
+  const btn=document.createElement('button');
+  btn.className='btn btn-primary';btn.id='btn-manualboot';
+  btn.style.cssText='margin-top:8px;width:100%';
+  btn.textContent='✅ BOOT mode mein hoon — SYNC karo';
+  btn.onclick=()=>{_manualBootReady=true;btn.remove();resolveWait();};
+  document.getElementById('log').parentElement.insertBefore(btn,document.getElementById('log'));
+  log('⚡ Manual BOOT mode: BOOT button dabaao → RESET dabao/chodo → BOOT chodo → phir upar wala button dabao','warn');
+  // Auto-timeout 30s
+  const timeout=setTimeout(()=>{_manualBootReady=false;btn.remove();resolveWait();},30000);
+  await p;
+  clearTimeout(timeout);
+}
 async function enterBootloader(existingWriter){
   if(existingWriter){try{existingWriter.releaseLock();}catch{}}
+  let dtrRtsWorked=false;
   try{
-    // ESP32 bootloader entry: RTS=HIGH (EN/RST low) + DTR=HIGH (IO0 low), then release EN
     await port.setSignals({dataTerminalReady:true,requestToSend:true});
     await sleep(100);
     await port.setSignals({dataTerminalReady:true,requestToSend:false});
     await sleep(50);
     await port.setSignals({dataTerminalReady:false,requestToSend:false});
+    dtrRtsWorked=true;
   }catch(e){
-    log('DTR/RTS signals not supported by this adapter — try manual BOOT mode','warn');
+    log('DTR/RTS signals not supported — manual BOOT mode required','warn');
   }
   await sleep(500);
   // Flush stale firmware serial output before sending SYNC
   await flushSerial();
+  // Quick SYNC check — if DTR/RTS worked, skip manual prompt
+  // If not, ask user to manually enter BOOT mode
+  let quickSynced=false;
+  {
+    const sd=new Uint8Array(36);sd[0]=0x07;sd[1]=0x07;sd[2]=0x12;sd[3]=0x20;sd.fill(0x55,4);
+    const sp=slipEncode(buildCmd(0x08,sd));
+    const w=port.writable.getWriter();
+    try{await w.write(sp);}finally{w.releaseLock();}
+    await sleep(150);
+    try{await readResponse(500);quickSynced=true;}catch{}
+  }
+  if(!quickSynced){
+    await waitForManualBoot();
+    await flushSerial();
+  }
   const sd=new Uint8Array(36);
   sd[0]=0x07;sd[1]=0x07;sd[2]=0x12;sd[3]=0x20;sd.fill(0x55,4);
   const sp=slipEncode(buildCmd(0x08,sd));
