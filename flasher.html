@@ -494,6 +494,7 @@ body.light .wifi-input{background:rgba(0,0,0,.05)}
 <script>
 'use strict';
 const RELEASE='https://parakhmewara2002-gif.github.io/ir_remote_mdns/firmware/';
+const RELEASE_RAW='https://raw.githubusercontent.com/parakhmewara2002-gif/ir_remote_mdns/master/firmware/';
 const FILES=[
   {name:'bootloader.bin',addr:0x1000,  key:'bootloader'},
   {name:'partitions.bin',addr:0x8000,  key:'partitions'},
@@ -753,8 +754,8 @@ async function downloadAll(){
     try{
       const urls=[
         RELEASE+f.name,
-        'https://corsproxy.io/?'+encodeURIComponent(RELEASE+f.name),
-        'https://api.allorigins.win/raw?url='+encodeURIComponent(RELEASE+f.name),
+        RELEASE_RAW+f.name,
+        'https://corsproxy.io/?'+encodeURIComponent(RELEASE_RAW+f.name),
       ];
       let buf=null;let usedProxy=false;
       for(let ui=0;ui<urls.length;ui++){
