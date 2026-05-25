@@ -1,0 +1,71 @@
+name: Build APK
+
+on:
+  push:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'zulu'
+          java-version: '17'
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.22.0'
+          channel: 'stable'
+          cache: true
+
+      - name: Get dependencies
+        run: cd flasher_app && flutter pub get
+
+      - name: Build APK
+        run: cd flasher_app && flutter build apk --release --no-obfuscate
+
+      - name: Rename APK
+        run: |
+          mkdir -p output
+          cp build/app/outputs/flutter-apk/app-release.apk output/IR-Remote-Flasher.apk
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: IR-Remote-Flasher-APK
+          path: output/IR-Remote-Flasher.apk
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: apk-v${{ github.run_number }}
+          name: "IR Remote Flasher APK v${{ github.run_number }}"
+          body: |
+            ## IR Remote Flasher — Android APK
+
+            ### Install karo:
+            1. Yeh APK download karo
+            2. Phone mein install karo (Unknown sources allow karo)
+            3. ESP32 ko USB OTG se connect karo
+            4. App open karo → Scan → Connect → Flash
+
+            ### Supported devices:
+            - CP2102 (Silicon Labs)
+            - CH340 / CH341 (QinHeng)
+            - FTDI
+            - ESP32-S3 Native USB
+
+            ### Android requirement: Android 5.0+ (API 21+)
+          files: output/IR-Remote-Flasher.apk
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
