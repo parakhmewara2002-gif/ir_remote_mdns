@@ -1078,12 +1078,16 @@ async function eraseFlash(){
   try{
     let writer=await enterBootloader(null);
     try{
-      // Opcode 0x04 = FLASH_ERASE_CHIP (correct ESP32 ROM opcode; 0x30 was wrong)
+      // FLASH_ERASE_CHIP = 0x04, no data payload
       await writer.write(slipEncode(buildCmd(0x04,new Uint8Array(0))));
-      writer.releaseLock();writer=null;
-      await readResponse(30000); // erase can take up to 30s
-      log('Erase response OK ✅','ok');
-    }finally{if(writer)try{writer.releaseLock();}catch{}}
+    }finally{
+      try{writer.releaseLock();}catch{}
+      writer=null;
+    }
+    // Wait for stream to fully release before reading response
+    await sleep(100);
+    await readResponse(45000); // chip erase can take up to 45s on large flash
+    log('Erase response OK ✅','ok');
     await animateProg('erase',10000);
     log('Flash erase complete ✅','ok');
     toast('Flash erased ✅','ok');
@@ -1318,10 +1322,10 @@ async function readResponse(timeoutMs=500){
 // enterBootloader: resets device into bootloader and syncs.
 // Returns a fresh writer (caller must releaseLock when done).
 async function enterBootloader(existingWriter){
-  // Release any existing writer so we can freely read/write during sync
   if(existingWriter){try{existingWriter.releaseLock();}catch{}}
   try{
-    await port.setSignals({dataTerminalReady:false,requestToSend:true});
+    // ESP32 bootloader entry: RTS=HIGH (EN low) + DTR=HIGH (IO0 low), then release EN
+    await port.setSignals({dataTerminalReady:true,requestToSend:true});
     await sleep(100);
     await port.setSignals({dataTerminalReady:true,requestToSend:false});
     await sleep(50);
@@ -1333,24 +1337,22 @@ async function enterBootloader(existingWriter){
   const sd=new Uint8Array(36);
   sd[0]=0x07;sd[1]=0x07;sd[2]=0x12;sd[3]=0x20;sd.fill(0x55,4);
   const sp=slipEncode(buildCmd(0x08,sd));
-  // Send multiple SYNC attempts and read back responses
   let synced=false;
   for(let i=0;i<7;i++){
     const w=port.writable.getWriter();
     try{await w.write(sp);}finally{w.releaseLock();}
-    await sleep(50);
+    await sleep(100); // give ESP32 time to respond (50ms was too short)
     try{
-      await readResponse(300);
+      await readResponse(400);
       synced=true;
       log('SYNC response received ✅','ok');
       break;
     }catch(e){
       log('SYNC attempt '+(i+1)+': '+e.message,'warn');
     }
-    await sleep(50);
+    await sleep(100);
   }
   if(!synced)throw new Error('SYNC failed — device not in bootloader mode. Hold BOOT, press RESET.');
-  // Return a fresh writer for the caller to use
   if(port.writable.locked)throw new Error('Port write stream locked after SYNC');
   return port.writable.getWriter();
 }
