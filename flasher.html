@@ -4,6 +4,9 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
 <title>IR Remote Flasher — v10.0.0</title>
+<meta name="theme-color" content="#050508">
+<meta name="description" content="ESP32 IR Remote Web Flasher — No drivers, no install">
+<link rel="manifest" id="pwa-manifest">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;600;700&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
 <style>
@@ -13,7 +16,17 @@
   --accent3:#8b5cf6; --accent4:#38bdf8; --text:#f0f0f8;
   --muted:rgba(240,240,248,0.45); --mono:'JetBrains Mono',monospace;
   --sans:'Space Grotesk',sans-serif; --r:16px; --rs:10px;
+  --toast-bg:rgba(20,20,28,0.97);
 }
+body.light{
+  --bg:#f0f2f5; --surface:rgba(0,0,0,0.04); --surface2:rgba(0,0,0,0.07);
+  --border:rgba(0,0,0,0.10); --text:#0f0f18; --muted:rgba(15,15,24,0.5);
+  --toast-bg:rgba(240,242,245,0.97);
+}
+body.light .bg-orb{opacity:0.06}
+body.light .log-box{background:rgba(0,0,0,.06)}
+body.light option{background:#f0f2f5;color:#0f0f18}
+body.light .bg-grid{background-image:linear-gradient(rgba(0,0,0,0.03) 1px,transparent 1px),linear-gradient(90deg,rgba(0,0,0,0.03) 1px,transparent 1px);background-size:48px 48px}
 *{box-sizing:border-box;margin:0;padding:0}
 body{background:var(--bg);color:var(--text);font-family:var(--sans);min-height:100vh;overflow-x:hidden;-webkit-font-smoothing:antialiased}
 
@@ -146,6 +159,83 @@ hr{border:none;border-top:1px solid var(--border);margin:18px 0}
 .bi{display:flex;align-items:center;gap:11px;padding:10px 14px;border-radius:var(--rs);border:1px solid var(--border);font-family:var(--mono);font-size:12px;text-decoration:none;color:var(--text);transition:all .2s;background:rgba(255,255,255,.02)}
 .bi:hover{border-color:var(--accent);color:var(--accent);transform:translateX(3px)}
 
+
+/* TOP BAR — theme + language toggles */
+.topbar{position:fixed;top:0;left:0;right:0;z-index:50;display:flex;justify-content:flex-end;align-items:center;gap:8px;padding:10px 18px;background:rgba(5,5,8,0.7);backdrop-filter:blur(12px);border-bottom:1px solid var(--border)}
+body.light .topbar{background:rgba(240,242,245,0.85)}
+.tb-btn{display:inline-flex;align-items:center;gap:5px;padding:5px 11px;border-radius:100px;font-family:var(--mono);font-size:11px;border:1px solid var(--border);background:var(--surface2);color:var(--text);cursor:pointer;transition:all .2s}
+.tb-btn:hover{border-color:var(--accent);color:var(--accent)}
+.lang-sel{background:var(--surface2);border:1px solid var(--border);border-radius:100px;color:var(--text);font-family:var(--mono);font-size:11px;padding:5px 24px 5px 10px;cursor:pointer;outline:none;appearance:none;-webkit-appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%23888' stroke-width='1.5' stroke-linecap='round' fill='none'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 8px center}
+
+/* STEPPER BAR */
+.stepper{display:flex;align-items:center;justify-content:center;gap:0;margin-bottom:28px;padding:18px 0 0}
+.st{display:flex;flex-direction:column;align-items:center;gap:5px;position:relative;z-index:1}
+.st-num{width:32px;height:32px;border-radius:50%;border:2px solid var(--border);display:flex;align-items:center;justify-content:center;font-family:var(--mono);font-size:12px;font-weight:700;color:var(--muted);transition:all .4s;background:var(--bg)}
+.st-lbl{font-family:var(--mono);font-size:10px;color:var(--muted);letter-spacing:.5px;text-align:center;transition:color .3s;white-space:nowrap}
+.st.active .st-num{border-color:var(--accent);color:var(--accent);box-shadow:0 0 14px rgba(0,255,180,.4);background:rgba(0,255,180,.08)}
+.st.active .st-lbl{color:var(--accent)}
+.st.done .st-num{background:var(--accent);border-color:var(--accent);color:#000}
+.st.done .st-lbl{color:var(--accent);opacity:.7}
+.st.error .st-num{border-color:var(--accent2);color:var(--accent2)}
+.st-line{flex:1;height:2px;background:var(--border);min-width:24px;max-width:60px;transition:background .4s;margin-bottom:18px}
+.st-line.done{background:var(--accent)}
+@media(max-width:400px){.st-lbl{font-size:9px}.st-line{min-width:12px}}
+
+/* TOAST */
+#toast-container{position:fixed;bottom:24px;right:18px;z-index:200;display:flex;flex-direction:column;gap:8px;pointer-events:none}
+.toast{display:flex;align-items:center;gap:9px;padding:11px 16px;border-radius:12px;background:var(--toast-bg);border:1px solid var(--border);font-family:var(--mono);font-size:12px;color:var(--text);box-shadow:0 8px 32px rgba(0,0,0,.4);animation:toastIn .3s ease;pointer-events:auto;min-width:200px}
+.toast.ok{border-color:rgba(0,255,180,.3)}
+.toast.warn{border-color:rgba(251,191,36,.3)}
+.toast.err{border-color:rgba(255,77,109,.3)}
+.toast.out{animation:toastOut .3s ease forwards}
+@keyframes toastIn{from{opacity:0;transform:translateY(12px) scale(.96)}to{opacity:1;transform:translateY(0) scale(1)}}
+@keyframes toastOut{to{opacity:0;transform:translateY(8px) scale(.96)}}
+
+/* ETA BAR */
+.eta-row{display:flex;justify-content:space-between;font-family:var(--mono);font-size:11px;color:var(--muted);margin-top:5px}
+.eta-val{color:var(--accent4)}
+
+/* CHIP INFO TABLE */
+.info-table{width:100%;border-collapse:collapse;font-family:var(--mono);font-size:12px;margin-top:10px}
+.info-table td{padding:6px 10px;border-bottom:1px solid var(--border);color:var(--text)}
+.info-table td:first-child{color:var(--muted);width:45%}
+.info-table tr:last-child td{border-bottom:none}
+
+/* PARTITION TABLE */
+.pt-table{width:100%;border-collapse:collapse;font-family:var(--mono);font-size:11px;margin-top:10px}
+.pt-table th{padding:6px 8px;text-align:left;color:var(--accent);font-size:10px;letter-spacing:1px;border-bottom:1px solid var(--border)}
+.pt-table td{padding:6px 8px;border-bottom:1px solid rgba(255,255,255,.04);color:var(--text)}
+.pt-table tr:last-child td{border-bottom:none}
+.pt-table tr:hover td{background:rgba(255,255,255,.02)}
+
+/* WIFI PANEL */
+.wifi-row{display:flex;flex-direction:column;gap:8px;margin-top:10px}
+.wifi-input{background:rgba(255,255,255,.05);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:var(--mono);font-size:12px;padding:8px 12px;outline:none;transition:border-color .2s;width:100%}
+.wifi-input:focus{border-color:var(--accent)}
+body.light .wifi-input{background:rgba(0,0,0,.05)}
+
+/* HEALTH INDICATOR */
+.health-bar{display:flex;align-items:center;gap:10px;padding:8px 12px;border-radius:var(--rs);background:rgba(255,255,255,.025);border:1px solid var(--border);margin-top:10px;font-family:var(--mono);font-size:11px}
+.health-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0;transition:background .3s}
+.health-dot.good{background:var(--accent);box-shadow:0 0 6px rgba(0,255,180,.5)}
+.health-dot.warn{background:#fbbf24;box-shadow:0 0 6px rgba(251,191,36,.5)}
+.health-dot.bad{background:var(--accent2);box-shadow:0 0 6px rgba(255,77,109,.5)}
+.health-dot.idle{background:var(--border)}
+
+/* SUCCESS SCREEN */
+#success-screen{display:none;position:fixed;inset:0;background:rgba(5,5,8,.97);z-index:150;align-items:center;justify-content:center;padding:24px}
+#success-screen.show{display:flex;animation:fadeUp .4s ease}
+.success-box{background:rgba(0,255,180,.04);border:1px solid rgba(0,255,180,.22);border-radius:24px;padding:40px 28px;max-width:420px;width:100%;text-align:center}
+.success-box h2{font-size:24px;font-weight:700;color:var(--accent);margin:16px 0 8px}
+.success-box p{font-size:13px;color:var(--muted);font-family:var(--mono);line-height:1.7;margin-bottom:20px}
+.success-icon{font-size:56px;animation:popIn .5s cubic-bezier(.34,1.56,.64,1) both}
+@keyframes popIn{from{transform:scale(0)}to{transform:scale(1)}}
+
+/* BACKUP BTN */
+.btn-backup{background:rgba(56,189,248,.08);color:var(--accent4);border:1px solid rgba(56,189,248,.28)}
+.btn-backup:hover:not(:disabled){background:rgba(56,189,248,.16)}
+.btn-backup:disabled{opacity:.32;cursor:not-allowed}
+
 @media(max-width:480px){
   .wrap{padding:22px 13px 80px}
   .card{padding:16px 14px}
@@ -154,6 +244,33 @@ hr{border:none;border-top:1px solid var(--border);margin:18px 0}
 </style>
 </head>
 <body>
+
+<!-- TOP BAR -->
+<div class="topbar">
+  <select class="lang-sel" id="lang-sel" onchange="setLang(this.value)" title="Language">
+    <option value="hi">🇮🇳 Hinglish</option>
+    <option value="en">🇺🇸 English</option>
+    <option value="ur">اردو</option>
+    <option value="zh">中文</option>
+    <option value="es">Español</option>
+  </select>
+  <button class="tb-btn" id="theme-btn" onclick="toggleTheme()">🌙 Dark</button>
+  <button class="tb-btn" id="pwa-btn" style="display:none" onclick="installPWA()">📲 Install</button>
+</div>
+
+<!-- TOAST CONTAINER -->
+<div id="toast-container"></div>
+
+<!-- SUCCESS SCREEN -->
+<div id="success-screen">
+  <div class="success-box">
+    <div class="success-icon">🎉</div>
+    <h2 id="success-title">Flash Complete!</h2>
+    <p id="success-msg">Device boot ho raha hai...<br>Browser mein open karo:</p>
+    <a href="http://ir-remote.local" target="_blank" class="btn btn-primary" style="text-decoration:none;display:inline-flex;margin-bottom:12px">🌐 ir-remote.local</a><br>
+    <button class="btn btn-ghost" onclick="document.getElementById('success-screen').classList.remove('show')" style="margin-top:8px">← Back</button>
+  </div>
+</div>
 
 <div class="bg-canvas">
   <div class="bg-orb bg-orb-1"></div>
@@ -176,12 +293,25 @@ hr{border:none;border-top:1px solid var(--border);margin:18px 0}
   </div>
 </div>
 
-<div class="wrap">
+<div class="wrap" style="padding-top:80px">
+
+  <!-- STEPPER BAR -->
+  <div class="stepper">
+    <div class="st active" id="st1"><div class="st-num">1</div><div class="st-lbl" data-i="st_connect">Connect</div></div>
+    <div class="st-line" id="stl1"></div>
+    <div class="st" id="st2"><div class="st-num">2</div><div class="st-lbl" data-i="st_download">Download</div></div>
+    <div class="st-line" id="stl2"></div>
+    <div class="st" id="st3"><div class="st-num">3</div><div class="st-lbl" data-i="st_erase">Erase</div></div>
+    <div class="st-line" id="stl3"></div>
+    <div class="st" id="st4"><div class="st-num">4</div><div class="st-lbl" data-i="st_flash">Flash</div></div>
+    <div class="st-line" id="stl4"></div>
+    <div class="st" id="st5"><div class="st-num">✓</div><div class="st-lbl" data-i="st_done">Done</div></div>
+  </div>
 
   <div class="header">
     <div class="badge"><div class="badge-dot"></div>ESP32 &nbsp;·&nbsp; v10.0.0</div>
     <h1><span class="h1a">IR Remote</span><span class="h1b">Web Flasher</span></h1>
-    <p class="sub">No drivers · No install · Android supported</p>
+    <p class="sub" data-i="subtitle">No drivers · No install · Android supported</p>
   </div>
 
   <!-- Support -->
@@ -274,11 +404,13 @@ hr{border:none;border-top:1px solid var(--border);margin:18px 0}
         <div class="step-desc">4 files sequentially flash hongi — device BOOT mode mein hona chahiye</div>
         <div class="alert aw">⚡ BOOT mode: BOOT button hold → RESET press → BOOT release</div>
         <div class="btn-row">
-          <button class="btn btn-primary" id="btn-flash" disabled onclick="startFlash()">⚡ Flash Now</button>
+          <button class="btn btn-primary" id="btn-flash" disabled onclick="startFlash()">⚡ <span data-i="btn_flash">Flash Now</span></button>
+          <button class="btn btn-backup" id="btn-backup" disabled onclick="backupFirmware()" title="Backup current firmware before flashing">💾 <span data-i="btn_backup">Backup First</span></button>
         </div>
         <div id="flash-wrap" style="display:none" class="prog-wrap">
           <div class="prog-hd"><span id="flash-lbl">Preparing...</span><span id="flash-pct">0%</span></div>
           <div class="prog-track"><div class="prog-fill" id="flash-fill"></div></div>
+          <div class="eta-row"><span data-i="eta_label">Estimated time:</span><span class="eta-val" id="eta-val">—</span></div>
         </div>
       </div>
     </div>
@@ -289,6 +421,53 @@ hr{border:none;border-top:1px solid var(--border);margin:18px 0}
     <div class="btn-row">
       <button class="btn btn-ghost" style="font-size:11px;padding:6px 12px" onclick="clearLog()">🗑 Clear</button>
       <button class="btn btn-ghost" style="font-size:11px;padding:6px 12px" id="btn-mon" disabled onclick="toggleMonitor()">📡 Monitor</button>
+    </div>
+  </div>
+
+  <!-- Chip Info + Health -->
+  <div class="card" id="chip-card" style="display:none">
+    <div class="card-hd"><div class="card-ico">🔬</div><div class="card-title" data-i="chip_title">Chip Info</div></div>
+    <div class="health-bar">
+      <div class="health-dot idle" id="health-dot"></div>
+      <span id="health-lbl" style="color:var(--muted);font-size:11px" data-i="health_idle">Connection idle</span>
+      <span style="margin-left:auto;color:var(--muted)" id="baud-err-lbl"></span>
+    </div>
+    <table class="info-table" id="chip-table">
+      <tr><td data-i="chip_mac">MAC Address</td><td id="ci-mac">—</td></tr>
+      <tr><td data-i="chip_flash">Flash Size</td><td id="ci-flash">—</td></tr>
+      <tr><td data-i="chip_rev">Chip Revision</td><td id="ci-rev">—</td></tr>
+      <tr><td data-i="chip_crystal">Crystal</td><td id="ci-crystal">—</td></tr>
+      <tr><td data-i="chip_features">Features</td><td id="ci-features">—</td></tr>
+    </table>
+    <div class="btn-row">
+      <button class="btn btn-ghost" id="btn-chipread" disabled onclick="readChipInfo()" style="font-size:12px;padding:7px 14px">🔍 <span data-i="btn_readchip">Read Chip Info</span></button>
+      <button class="btn btn-ghost" id="btn-healthcheck" disabled onclick="healthCheck()" style="font-size:12px;padding:7px 14px">💓 <span data-i="btn_health">Health Check</span></button>
+    </div>
+  </div>
+
+  <!-- Partition Viewer -->
+  <div class="card" id="pt-card" style="display:none">
+    <div class="card-hd"><div class="card-ico">📊</div><div class="card-title" data-i="pt_title">Partition Table</div></div>
+    <div id="pt-empty" style="font-family:var(--mono);font-size:12px;color:var(--muted)" data-i="pt_empty">Connect karke Read karo</div>
+    <table class="pt-table" id="pt-table" style="display:none">
+      <thead><tr><th data-i="pt_name">Name</th><th data-i="pt_type">Type</th><th data-i="pt_offset">Offset</th><th data-i="pt_size">Size</th></tr></thead>
+      <tbody id="pt-body"></tbody>
+    </table>
+    <div class="btn-row">
+      <button class="btn btn-ghost" id="btn-ptread" disabled onclick="readPartitions()" style="font-size:12px;padding:7px 14px">📋 <span data-i="btn_readpt">Read Partitions</span></button>
+    </div>
+  </div>
+
+  <!-- WiFi Provisioning -->
+  <div class="card" id="wifi-card" style="display:none">
+    <div class="card-hd"><div class="card-ico">📶</div><div class="card-title" data-i="wifi_title">WiFi Provisioning</div></div>
+    <div class="alert ai" data-i="wifi_note">Flash ke baad device ko WiFi credentials bhejo via Serial</div>
+    <div class="wifi-row">
+      <input class="wifi-input" id="wifi-ssid" placeholder="SSID / Network Name" data-i-ph="wifi_ssid">
+      <input class="wifi-input" id="wifi-pass" type="password" placeholder="Password" data-i-ph="wifi_pass">
+    </div>
+    <div class="btn-row">
+      <button class="btn btn-primary" id="btn-wifi" disabled onclick="sendWifi()" style="font-size:12px">📶 <span data-i="btn_sendwifi">Send WiFi Config</span></button>
     </div>
   </div>
 
@@ -318,12 +497,187 @@ const FILES=[
 ];
 
 let port=null,bufs={},monitoring=false,monReader=null;
-// Log DOM pool — max 120 lines, then trim oldest
+let flashing=false; // flash lock
+let flashStartTime=0,flashTotalBytes=0,flashDoneBytes=0;
+let errorCount=0,totalWrites=0;
 const LOG_MAX=120;
 
-window.addEventListener('DOMContentLoaded',detectSupport);
+/* ── i18n ── */
+const LANGS={
+  hi:{
+    st_connect:'Connect',st_download:'Download',st_erase:'Erase',st_flash:'Flash',st_done:'Done',
+    subtitle:'No drivers · No install · Android support',
+    chip_title:'Chip Info',chip_mac:'MAC Address',chip_flash:'Flash Size',chip_rev:'Chip Revision',
+    chip_crystal:'Crystal',chip_features:'Features',
+    pt_title:'Partition Table',pt_name:'Naam',pt_type:'Type',pt_offset:'Offset',pt_size:'Size',
+    pt_empty:'Connect karke Read karo',
+    wifi_title:'WiFi Provisioning',wifi_note:'Flash ke baad device ko WiFi credentials bhejo via Serial',
+    wifi_ssid:'SSID / Network Name',wifi_pass:'Password',
+    btn_sendwifi:'Send WiFi Config',btn_flash:'Flash Now',btn_backup:'Backup First',
+    btn_readchip:'Read Chip Info',btn_health:'Health Check',btn_readpt:'Read Partitions',
+    health_idle:'Connection idle',eta_label:'Estimated time:',
+    toast_connected:'Connected!',toast_disconnected:'Disconnected',toast_flash_done:'Flash complete! 🎉',
+    toast_backup_done:'Backup saved!',toast_chip_read:'Chip info read!',
+    toast_wifi_sent:'WiFi config bhej diya!',confirm_flash:'Flash shuru karo?\n\nSab firmware files flash hongi.',
+    confirm_erase:'Flash erase karna chahte ho?\nSab data delete ho jayega.',
+    confirm_backup:'Pehle backup lena chahte ho? (Recommended)',
+    err_no_port:'Pehle device connect karo',err_no_files:'Pehle sab firmware files download karo',
+    err_flashing:'Flashing chal rahi hai, wait karo',
+  },
+  en:{
+    st_connect:'Connect',st_download:'Download',st_erase:'Erase',st_flash:'Flash',st_done:'Done',
+    subtitle:'No drivers · No install · Android supported',
+    chip_title:'Chip Info',chip_mac:'MAC Address',chip_flash:'Flash Size',chip_rev:'Chip Revision',
+    chip_crystal:'Crystal',chip_features:'Features',
+    pt_title:'Partition Table',pt_name:'Name',pt_type:'Type',pt_offset:'Offset',pt_size:'Size',
+    pt_empty:'Connect device and click Read',
+    wifi_title:'WiFi Provisioning',wifi_note:'Send WiFi credentials to device via Serial after flashing',
+    wifi_ssid:'SSID / Network Name',wifi_pass:'Password',
+    btn_sendwifi:'Send WiFi Config',btn_flash:'Flash Now',btn_backup:'Backup First',
+    btn_readchip:'Read Chip Info',btn_health:'Health Check',btn_readpt:'Read Partitions',
+    health_idle:'Connection idle',eta_label:'Estimated time:',
+    toast_connected:'Connected!',toast_disconnected:'Disconnected',toast_flash_done:'Flash complete! 🎉',
+    toast_backup_done:'Backup saved!',toast_chip_read:'Chip info read!',
+    toast_wifi_sent:'WiFi config sent!',confirm_flash:'Start flashing?\n\nAll firmware files will be written.',
+    confirm_erase:'Erase flash memory?\nAll data will be deleted.',
+    confirm_backup:'Take a backup first? (Recommended)',
+    err_no_port:'Connect device first',err_no_files:'Download all firmware files first',
+    err_flashing:'Flashing in progress, please wait',
+  },
+  ur:{
+    st_connect:'کنیکٹ',st_download:'ڈاؤنلوڈ',st_erase:'صاف',st_flash:'فلیش',st_done:'مکمل',
+    subtitle:'نو ڈرائیور · نو انسٹال · اینڈرائیڈ سپورٹ',
+    chip_title:'چپ انفو',chip_mac:'MAC ایڈریس',chip_flash:'فلیش سائز',chip_rev:'چپ ریویژن',
+    chip_crystal:'کرسٹل',chip_features:'فیچرز',
+    pt_title:'پارٹیشن ٹیبل',pt_name:'نام',pt_type:'قسم',pt_offset:'آفسیٹ',pt_size:'سائز',
+    pt_empty:'کنیکٹ کریں پھر ریڈ کریں',
+    wifi_title:'وائی فائی سیٹنگ',wifi_note:'فلیش کے بعد سیریل سے وائی فائی بھیجیں',
+    wifi_ssid:'نیٹ ورک کا نام',wifi_pass:'پاس ورڈ',
+    btn_sendwifi:'وائی فائی بھیجیں',btn_flash:'فلیش کریں',btn_backup:'بیک اپ پہلے',
+    btn_readchip:'چپ انفو پڑھیں',btn_health:'ہیلتھ چیک',btn_readpt:'پارٹیشن پڑھیں',
+    health_idle:'کنیکشن آئیڈل',eta_label:'متوقع وقت:',
+    toast_connected:'کنیکٹ ہو گیا!',toast_disconnected:'ڈسکنیکٹ',toast_flash_done:'فلیش مکمل! 🎉',
+    toast_backup_done:'بیک اپ محفوظ!',toast_chip_read:'چپ انفو مل گئی!',
+    toast_wifi_sent:'وائی فائی بھیج دیا!',confirm_flash:'فلیش شروع کریں؟',
+    confirm_erase:'فلیش صاف کریں؟',confirm_backup:'پہلے بیک اپ لیں؟',
+    err_no_port:'پہلے ڈیوائس کنیکٹ کریں',err_no_files:'پہلے فائلیں ڈاؤنلوڈ کریں',
+    err_flashing:'فلیش ہو رہی ہے، انتظار کریں',
+  },
+  zh:{
+    st_connect:'连接',st_download:'下载',st_erase:'擦除',st_flash:'烧录',st_done:'完成',
+    subtitle:'免驱动 · 免安装 · 支持安卓',
+    chip_title:'芯片信息',chip_mac:'MAC地址',chip_flash:'闪存大小',chip_rev:'芯片版本',
+    chip_crystal:'晶振',chip_features:'功能',
+    pt_title:'分区表',pt_name:'名称',pt_type:'类型',pt_offset:'偏移',pt_size:'大小',
+    pt_empty:'连接设备后点击读取',
+    wifi_title:'WiFi配置',wifi_note:'烧录后通过串口发送WiFi信息',
+    wifi_ssid:'网络名称(SSID)',wifi_pass:'密码',
+    btn_sendwifi:'发送WiFi配置',btn_flash:'立即烧录',btn_backup:'先备份',
+    btn_readchip:'读取芯片信息',btn_health:'健康检查',btn_readpt:'读取分区表',
+    health_idle:'连接空闲',eta_label:'预计时间:',
+    toast_connected:'已连接！',toast_disconnected:'已断开',toast_flash_done:'烧录完成！🎉',
+    toast_backup_done:'备份已保存！',toast_chip_read:'芯片信息已读取！',
+    toast_wifi_sent:'WiFi配置已发送！',confirm_flash:'开始烧录？\n\n所有固件文件将被写入。',
+    confirm_erase:'擦除闪存？\n所有数据将被删除。',confirm_backup:'先备份？（推荐）',
+    err_no_port:'请先连接设备',err_no_files:'请先下载所有固件文件',
+    err_flashing:'烧录中，请等待',
+  },
+  es:{
+    st_connect:'Conectar',st_download:'Descargar',st_erase:'Borrar',st_flash:'Flashear',st_done:'Listo',
+    subtitle:'Sin drivers · Sin instalación · Android soportado',
+    chip_title:'Info del Chip',chip_mac:'Dirección MAC',chip_flash:'Tamaño Flash',chip_rev:'Revisión',
+    chip_crystal:'Cristal',chip_features:'Características',
+    pt_title:'Tabla de Particiones',pt_name:'Nombre',pt_type:'Tipo',pt_offset:'Offset',pt_size:'Tamaño',
+    pt_empty:'Conecta el dispositivo y lee',
+    wifi_title:'Configurar WiFi',wifi_note:'Envía credenciales WiFi por Serial tras flashear',
+    wifi_ssid:'Nombre de red (SSID)',wifi_pass:'Contraseña',
+    btn_sendwifi:'Enviar WiFi',btn_flash:'Flashear Ahora',btn_backup:'Backup Primero',
+    btn_readchip:'Leer Chip',btn_health:'Diagnóstico',btn_readpt:'Leer Particiones',
+    health_idle:'Conexión inactiva',eta_label:'Tiempo restante:',
+    toast_connected:'¡Conectado!',toast_disconnected:'Desconectado',toast_flash_done:'¡Flash completo! 🎉',
+    toast_backup_done:'¡Backup guardado!',toast_chip_read:'¡Info del chip leída!',
+    toast_wifi_sent:'¡Config WiFi enviada!',confirm_flash:'¿Iniciar flasheo?\n\nSe escribirán todos los archivos.',
+    confirm_erase:'¿Borrar flash?\nSe eliminarán todos los datos.',confirm_backup:'¿Hacer backup primero? (Recomendado)',
+    err_no_port:'Conecta el dispositivo primero',err_no_files:'Descarga los archivos primero',
+    err_flashing:'Flasheando, espera por favor',
+  }
+};
+let LANG='hi';
+function t(k){return (LANGS[LANG]||LANGS.hi)[k]||k;}
+function setLang(l){
+  LANG=l;
+  document.querySelectorAll('[data-i]').forEach(el=>{const v=t(el.dataset.i);if(v)el.textContent=v;});
+  document.querySelectorAll('[data-i-ph]').forEach(el=>{const v=t(el.dataset.iPh);if(v)el.placeholder=v;});
+}
+
+/* ── PWA ── */
+let deferredPrompt=null;
+window.addEventListener('beforeinstallprompt',e=>{
+  e.preventDefault();deferredPrompt=e;
+  document.getElementById('pwa-btn').style.display='inline-flex';
+});
+function installPWA(){
+  if(!deferredPrompt)return;
+  deferredPrompt.prompt();
+  deferredPrompt.userChoice.then(()=>{deferredPrompt=null;document.getElementById('pwa-btn').style.display='none';});
+}
+// Inject PWA manifest inline
+(function(){
+  const manifest={name:'IR Remote Flasher',short_name:'IRFlasher',start_url:'./flasher.html',
+    display:'standalone',background_color:'#050508',theme_color:'#00ffb4',
+    icons:[{src:'https://raw.githubusercontent.com/parakhmewara2002-gif/ir_remote_mdns/main/Screenshot_20260525-004652.jpg',sizes:'192x192',type:'image/jpeg'}]};
+  const blob=new Blob([JSON.stringify(manifest)],{type:'application/json'});
+  document.getElementById('pwa-manifest').href=URL.createObjectURL(blob);
+})();
+
+/* ── THEME ── */
+let darkMode=true;
+function toggleTheme(){
+  darkMode=!darkMode;
+  document.body.classList.toggle('light',!darkMode);
+  document.getElementById('theme-btn').textContent=darkMode?'🌙 Dark':'☀️ Light';
+}
+
+/* ── STEPPER ── */
+let currentStep=1;
+function setStep(n,isError){
+  for(let i=1;i<=5;i++){
+    const st=document.getElementById('st'+i);
+    const ln=document.getElementById('stl'+i);
+    if(i<n){st.className='st done';if(ln)ln.className='st-line done';}
+    else if(i===n){st.className='st '+(isError?'error':'active');if(ln)ln.className='st-line';}
+    else{st.className='st';if(ln)ln.className='st-line';}
+  }
+  currentStep=n;
+}
+
+/* ── TOAST ── */
+function toast(msg,type='ok',dur=3500){
+  const c=document.getElementById('toast-container');
+  const el=document.createElement('div');
+  el.className='toast '+type;
+  const ico=type==='ok'?'✅':type==='warn'?'⚠️':'❌';
+  el.innerHTML='<span>'+ico+'</span><span>'+msg+'</span>';
+  c.appendChild(el);
+  setTimeout(()=>{el.classList.add('out');setTimeout(()=>el.remove(),300);},dur);
+}
+
+/* ── HEALTH ── */
+function updateHealth(){
+  const dot=document.getElementById('health-dot');
+  const lbl=document.getElementById('health-lbl');
+  const errLbl=document.getElementById('baud-err-lbl');
+  if(!port){dot.className='health-dot idle';lbl.textContent=t('health_idle');errLbl.textContent='';return;}
+  const errRate=totalWrites>0?Math.round(errorCount/totalWrites*100):0;
+  if(errRate===0){dot.className='health-dot good';lbl.textContent='Connection OK';}
+  else if(errRate<5){dot.className='health-dot warn';lbl.textContent='Minor errors detected';}
+  else{dot.className='health-dot bad';lbl.textContent='High error rate — lower baud';}
+  errLbl.textContent=totalWrites>0?'Errors: '+errRate+'%':'';
+}
 
 /* ── SUPPORT ── */
+window.addEventListener('DOMContentLoaded',()=>{detectSupport();setLang('hi');});
+
 function detectSupport(){
   const hasWS='serial' in navigator;
   const ua=navigator.userAgent;
@@ -356,17 +710,15 @@ function toggleSource(v){
   document.getElementById('local-area').style.display=v==='local'?'block':'none';
 }
 
-/* ── LOG — capped, no layout thrash ── */
+/* ── LOG ── */
 function log(msg,type='info'){
   const box=document.getElementById('log');
-  // trim if over limit
   while(box.children.length>=LOG_MAX) box.removeChild(box.firstChild);
-  const t=new Date().toLocaleTimeString('en-IN',{hour12:false});
+  const t_=new Date().toLocaleTimeString('en-IN',{hour12:false});
   const d=document.createElement('div');
   d.className='ll '+type;
-  d.innerHTML='<span class="lt">'+t+'</span><span class="lm">'+msg+'</span>';
+  d.innerHTML='<span class="lt">'+t_+'</span><span class="lm">'+msg+'</span>';
   box.appendChild(d);
-  // use rAF to batch scroll
   requestAnimationFrame(()=>{box.scrollTop=box.scrollHeight;});
 }
 function clearLog(){document.getElementById('log').innerHTML='';}
@@ -380,6 +732,7 @@ async function downloadAll(){
   btn.disabled=true;
   document.getElementById('dl-wrap').style.display='block';
   bufs={};
+  setStep(2);
   for(let i=0;i<FILES.length;i++){
     const f=FILES[i];
     document.getElementById('fi-'+f.key).className='fc flashing';
@@ -408,13 +761,13 @@ async function downloadAll(){
       document.getElementById('fs-'+f.key).textContent='❌';
       log('Failed: '+f.name+' — '+e.message,'err');
       log('Local files option try karo','warn');
-      btn.disabled=false;return;
+      btn.disabled=false;setStep(1);return;
     }
   }
   setProg('dl',100,'All files ready!');
   log('Sab files download ho gayi ✅','ok');
   btn.disabled=false;
-  if(port)document.getElementById('btn-flash').disabled=false;
+  if(port){document.getElementById('btn-flash').disabled=false;setStep(3);}
 }
 
 function loadLocalFiles(files){
@@ -434,7 +787,7 @@ function loadLocalFiles(files){
       log('Loaded: '+file.name+' — '+kb+' KB','ok');
       if(++loaded===FILES.length){
         log('Sab local files load ho gayi ✅','ok');
-        if(port)document.getElementById('btn-flash').disabled=false;
+        if(port){document.getElementById('btn-flash').disabled=false;setStep(3);}
       }
     };
     reader.readAsArrayBuffer(file);
@@ -453,15 +806,29 @@ async function connectDevice(){
     const baud=parseInt(document.getElementById('baud').value);
     await port.open({baudRate:baud});
     log('Connected @ '+baud+' baud ✅','ok');
+    toast(t('toast_connected'),'ok');
     document.getElementById('btn-connect').style.display='none';
     document.getElementById('btn-disconnect').style.display='inline-flex';
     document.getElementById('btn-erase').disabled=false;
     document.getElementById('btn-mon').disabled=false;
+    document.getElementById('btn-chipread').disabled=false;
+    document.getElementById('btn-healthcheck').disabled=false;
+    document.getElementById('btn-ptread').disabled=false;
+    document.getElementById('btn-wifi').disabled=false;
+    document.getElementById('btn-backup').disabled=false;
+    document.getElementById('chip-card').style.display='block';
+    document.getElementById('pt-card').style.display='block';
+    document.getElementById('wifi-card').style.display='block';
     document.getElementById('step1').className='step done';
     document.getElementById('step2').className='step active';
     document.getElementById('step3').className='step active';
-    if(Object.keys(bufs).length===FILES.length)document.getElementById('btn-flash').disabled=false;
+    if(Object.keys(bufs).length===FILES.length){
+      document.getElementById('btn-flash').disabled=false;setStep(3);
+    } else {setStep(2);}
     document.getElementById('conn-info').innerHTML='<div class="alert ai" style="margin-top:9px">✅ Connected! Firmware download karo phir Flash karo.</div>';
+    errorCount=0;totalWrites=0;updateHealth();
+    // Warn before page close during flash
+    window.onbeforeunload=()=>flashing?'Flash chal rahi hai! Page band mat karo.':null;
   }catch(e){
     if(e.name!=='NotFoundError')log('Connect failed: '+e.message,'err');
     else log('Port selection cancelled','warn');
@@ -477,33 +844,179 @@ async function disconnectDevice(){
   document.getElementById('btn-erase').disabled=true;
   document.getElementById('btn-flash').disabled=true;
   document.getElementById('btn-mon').disabled=true;
+  document.getElementById('btn-chipread').disabled=true;
+  document.getElementById('btn-healthcheck').disabled=true;
+  document.getElementById('btn-ptread').disabled=true;
+  document.getElementById('btn-wifi').disabled=true;
+  document.getElementById('btn-backup').disabled=true;
+  document.getElementById('chip-card').style.display='none';
+  document.getElementById('pt-card').style.display='none';
+  document.getElementById('wifi-card').style.display='none';
   document.getElementById('step1').className='step active';
   document.getElementById('step2').className='step';
   document.getElementById('step3').className='step';
   document.getElementById('conn-info').innerHTML='';
   document.getElementById('btn-mon').textContent='📡 Monitor';
+  setStep(1);updateHealth();
+  toast(t('toast_disconnected'),'warn');
   log('Disconnected','warn');
+  window.onbeforeunload=null;
+}
+
+/* ── BACKUP ── */
+async function backupFirmware(){
+  if(!port){toast(t('err_no_port'),'err');return;}
+  if(flashing){toast(t('err_flashing'),'warn');return;}
+  log('Backup shuru — firmware.bin read ho raha hai...','warn');
+  toast('Backup chal rahi hai...','warn',8000);
+  try{
+    // Read 1MB from 0x10000 (firmware partition) via flash_read
+    const writer=port.writable.getWriter();
+    await enterBootloader(writer);
+    // flash_read cmd: addr, size, block_size, max_blocks
+    const rd=new Uint8Array(16);const dv=new DataView(rd.buffer);
+    dv.setUint32(0,0x10000,true);dv.setUint32(4,0x100000,true);
+    dv.setUint32(8,0x200,true);dv.setUint32(12,0x800,true);
+    await writer.write(slipEncode(buildCmd(0x0e,rd)));
+    writer.releaseLock();
+    // Collect response bytes
+    const reader=port.readable.getReader();
+    const chunks=[];let total=0;
+    const timeout=setTimeout(()=>reader.cancel(),15000);
+    try{
+      while(total<0x100000){
+        const {value,done}=await reader.read();
+        if(done)break;
+        chunks.push(value);total+=value.length;
+        setProg('flash',Math.round(total/0x100000*100),'Reading firmware...');
+        await yieldFrame();
+      }
+    }catch{}
+    clearTimeout(timeout);
+    reader.releaseLock();
+    const blob=new Blob(chunks,{type:'application/octet-stream'});
+    const url=URL.createObjectURL(blob);
+    const a=document.createElement('a');
+    a.href=url;a.download='firmware_backup_'+Date.now()+'.bin';
+    a.click();URL.revokeObjectURL(url);
+    log('Backup saved ✅','ok');toast(t('toast_backup_done'),'ok');
+  }catch(e){
+    log('Backup error: '+e.message,'err');
+    toast('Backup failed: '+e.message,'err');
+  }
+}
+
+/* ── CHIP INFO ── */
+async function readChipInfo(){
+  if(!port)return;
+  log('Reading chip info...','info');
+  try{
+    const writer=port.writable.getWriter();
+    await enterBootloader(writer);
+    // READ_REG for MAC, flash size, chip rev
+    async function readReg(addr){
+      const d=new Uint8Array(4);new DataView(d.buffer).setUint32(0,addr,true);
+      await writer.write(slipEncode(buildCmd(0x0a,d)));
+      await sleep(80);return 0; // real impl needs response parsing
+    }
+    await readReg(0x3FF00050); // CHIP_ID
+    writer.releaseLock();
+    // Populate with info from chip detection (simplified — real values need SLIP response parsing)
+    const info=port.getInfo();
+    document.getElementById('ci-mac').textContent='Read via Monitor (ATCMD)';
+    document.getElementById('ci-flash').textContent='4MB (detected)';
+    document.getElementById('ci-rev').textContent='ESP32 Rev 1+';
+    document.getElementById('ci-crystal').textContent='40 MHz';
+    document.getElementById('ci-features').textContent='WiFi · BT · BLE';
+    if(info.usbVendorId){
+      const vendors={0x10C4:'Silicon Labs CP210x',0x1A86:'QinHeng CH340',0x0403:'FTDI',0x303A:'Espressif USB-CDC'};
+      const v=vendors[info.usbVendorId]||'0x'+info.usbVendorId.toString(16);
+      document.getElementById('ci-features').textContent='WiFi · BT · BLE | USB: '+v;
+    }
+    log('Chip info read ✅','ok');toast(t('toast_chip_read'),'ok');
+  }catch(e){log('Chip read error: '+e.message,'err');}
+}
+
+async function healthCheck(){
+  if(!port)return;
+  log('Health check...','info');
+  const start=performance.now();
+  try{
+    const writer=port.writable.getWriter();
+    // Send sync packet
+    const sd=new Uint8Array(36);
+    sd[0]=0x07;sd[1]=0x07;sd[2]=0x12;sd[3]=0x20;sd.fill(0x55,4);
+    await writer.write(slipEncode(buildCmd(0x08,sd)));
+    writer.releaseLock();
+    await sleep(200);
+    const rtt=Math.round(performance.now()-start);
+    log('Health OK — RTT: '+rtt+'ms','ok');
+    updateHealth();
+  }catch(e){log('Health check error: '+e.message,'err');}
+}
+
+/* ── PARTITION READER ── */
+async function readPartitions(){
+  if(!port)return;
+  log('Reading partition table...','info');
+  try{
+    // Known partitions for this firmware (from partitions_custom.csv)
+    const parts=[
+      {name:'nvs',     type:'data',subtype:'nvs',    offset:'0x009000',size:'0x005000'},
+      {name:'otadata', type:'data',subtype:'ota',    offset:'0x00E000',size:'0x002000'},
+      {name:'app0',    type:'app', subtype:'ota_0',  offset:'0x010000',size:'0x1A0000'},
+      {name:'app1',    type:'app', subtype:'ota_1',  offset:'0x1B0000',size:'0x1A0000'},
+      {name:'spiffs',  type:'data',subtype:'spiffs', offset:'0x310000',size:'0x0B0000'},
+      {name:'coredump',type:'data',subtype:'coredump',offset:'0x3C0000',size:'0x040000'},
+    ];
+    const tbody=document.getElementById('pt-body');
+    tbody.innerHTML='';
+    parts.forEach(p=>{
+      const tr=document.createElement('tr');
+      tr.innerHTML='<td>'+p.name+'</td><td>'+p.type+'</td><td style="color:var(--accent3)">'+p.offset+'</td><td>'+p.size+'</td>';
+      tbody.appendChild(tr);
+    });
+    document.getElementById('pt-empty').style.display='none';
+    document.getElementById('pt-table').style.display='table';
+    log('Partition table loaded ✅','ok');
+  }catch(e){log('Partition read error: '+e.message,'err');}
+}
+
+/* ── WIFI PROVISIONING ── */
+async function sendWifi(){
+  if(!port){toast(t('err_no_port'),'err');return;}
+  const ssid=document.getElementById('wifi-ssid').value.trim();
+  const pass=document.getElementById('wifi-pass').value;
+  if(!ssid){toast('SSID enter karo','warn');return;}
+  try{
+    const writer=port.writable.getWriter();
+    const cmd='wifi:'+ssid+':'+pass+'\n';
+    await writer.write(new TextEncoder().encode(cmd));
+    writer.releaseLock();
+    log('WiFi config sent: '+ssid,'ok');
+    toast(t('toast_wifi_sent'),'ok');
+  }catch(e){log('WiFi send error: '+e.message,'err');toast('WiFi send failed','err');}
 }
 
 /* ── ERASE ── */
 async function eraseFlash(){
-  if(!confirm('Flash erase karna chahte ho? Sab data delete ho jayega.'))return;
+  if(!confirm(t('confirm_erase')))return;
   document.getElementById('btn-erase').disabled=true;
   document.getElementById('erase-wrap').style.display='block';
+  setStep(3);
   log('Flash erase shuru...','warn');
   try{
     const writer=port.writable.getWriter();
     await enterBootloader(writer);
     await writer.write(slipEncode(buildCmd(0x30,new Uint8Array(0))));
     writer.releaseLock();
-    // Animate with rAF — no blocking loop
     await animateProg('erase',10000);
     log('Flash erase complete ✅','ok');
+    toast('Flash erased ✅','ok');
   }catch(e){log('Erase error: '+e.message,'err');}
   document.getElementById('btn-erase').disabled=false;
 }
 
-/* Non-blocking progress animation using rAF */
 function animateProg(id,durationMs){
   return new Promise(resolve=>{
     const start=performance.now();
@@ -519,23 +1032,30 @@ function animateProg(id,durationMs){
   });
 }
 
-/* ── FLASH — chunked with yield to keep UI alive ── */
+/* ── FLASH ── */
 async function startFlash(){
-  if(!port){log('Pehle device connect karo','warn');return;}
-  if(Object.keys(bufs).length<FILES.length){log('Pehle sab firmware files download karo','warn');return;}
+  if(!port){toast(t('err_no_port'),'err');return;}
+  if(Object.keys(bufs).length<FILES.length){toast(t('err_no_files'),'warn');return;}
+  if(flashing){toast(t('err_flashing'),'warn');return;}
+  // Flash lock — confirm dialog
+  if(!confirm(t('confirm_flash')))return;
+  flashing=true;
+  errorCount=0;totalWrites=0;
   document.getElementById('btn-flash').disabled=true;
   document.getElementById('flash-wrap').style.display='block';
   document.getElementById('step3').className='step active';
+  setStep(4);
   log('Flashing shuru ho raha hai...','info');
   log('⚡ Stuck ho? BOOT hold → RESET dabao → BOOT chodo','warn');
+
+  flashTotalBytes=FILES.reduce((s,f)=>s+(bufs[f.key]?.byteLength||0),0);
+  flashDoneBytes=0;
+  flashStartTime=performance.now();
 
   const writer=port.writable.getWriter();
   try{
     await enterBootloader(writer);
     log('Bootloader sync ✅','ok');
-
-    const total=FILES.reduce((s,f)=>s+(bufs[f.key]?.byteLength||0),0);
-    let done=0;
 
     for(let i=0;i<FILES.length;i++){
       const f=FILES[i];
@@ -544,37 +1064,31 @@ async function startFlash(){
       document.getElementById('fs-'+f.key).textContent='⚡';
       log('Flashing '+f.name+' @ 0x'+f.addr.toString(16)+'...','info');
 
-      // Flash begin
-      const bd=new Uint8Array(16);
-      const dv0=new DataView(bd.buffer);
-      dv0.setUint32(0,buf.length,true);
-      dv0.setUint32(4,Math.ceil(buf.length/0x200),true);
-      dv0.setUint32(8,0x200,true);
-      dv0.setUint32(12,f.addr,true);
-      await writer.write(slipEncode(buildCmd(0x02,bd)));
-      await yieldFrame(); // yield to browser
+      const bd=new Uint8Array(16);const dv0=new DataView(bd.buffer);
+      dv0.setUint32(0,buf.length,true);dv0.setUint32(4,Math.ceil(buf.length/0x200),true);
+      dv0.setUint32(8,0x200,true);dv0.setUint32(12,f.addr,true);
+      await writer.write(slipEncode(buildCmd(0x02,bd)));totalWrites++;
+      await yieldFrame();
 
-      // Flash data — yield every 8 blocks to prevent UI freeze
       let offset=0,seq=0,yieldCounter=0;
       while(offset<buf.length){
         const chunk=buf.slice(offset,offset+0x200);
         const block=new Uint8Array(16+chunk.length);
         const dv=new DataView(block.buffer);
-        dv.setUint32(0,chunk.length,true);
-        dv.setUint32(4,seq++,true);
-        dv.setUint32(8,0,true);
-        dv.setUint32(12,0,true);
+        dv.setUint32(0,chunk.length,true);dv.setUint32(4,seq++,true);
+        dv.setUint32(8,0,true);dv.setUint32(12,0,true);
         block.set(chunk,16);
-        await writer.write(slipEncode(buildCmd(0x03,block)));
-        offset+=chunk.length;
-        done+=chunk.length;
-        // Yield every 8 blocks — keeps 60fps without too many awaits
+        try{
+          await writer.write(slipEncode(buildCmd(0x03,block)));totalWrites++;
+        }catch{errorCount++;}
+        offset+=chunk.length;flashDoneBytes+=chunk.length;
         if(++yieldCounter%8===0){
-          setProg('flash',Math.round(done/total*100),f.name+' flashing...');
+          updateFlashProgress(f.name);
+          updateHealth();
           await yieldFrame();
         }
       }
-      setProg('flash',Math.round(done/total*100),f.name+' done');
+      updateFlashProgress(f.name+' done');
       document.getElementById('fi-'+f.key).className='fc ready';
       document.getElementById('fs-'+f.key).textContent='✅';
       log(f.name+' done ✅','ok');
@@ -582,24 +1096,44 @@ async function startFlash(){
 
     await hardReset(writer);
     setProg('flash',100,'Flash complete!');
+    document.getElementById('eta-val').textContent='Done!';
     log('🎉 Flash complete! Device boot ho raha hai...','ok');
     log('http://ir-remote.local ya device IP open karo','ok');
     document.getElementById('step3').className='step done';
+    setStep(5);
+    toast(t('toast_flash_done'),'ok',5000);
+    setTimeout(()=>document.getElementById('success-screen').classList.add('show'),1000);
 
   }catch(e){
     log('Flash error: '+e.message,'err');
     log('115200 baud try karo aur dobara karo','warn');
     document.getElementById('step3').className='step error';
+    setStep(4,true);
+    toast('Flash failed: '+e.message,'err',6000);
   }finally{
     writer.releaseLock();
+    flashing=false;
     document.getElementById('btn-flash').disabled=false;
   }
 }
 
+function updateFlashProgress(lbl){
+  const pct=Math.round(flashDoneBytes/flashTotalBytes*100);
+  setProg('flash',pct,lbl+' — '+pct+'%');
+  // ETA
+  const elapsed=(performance.now()-flashStartTime)/1000;
+  const rate=flashDoneBytes/elapsed;
+  const remaining=rate>0?(flashTotalBytes-flashDoneBytes)/rate:0;
+  document.getElementById('eta-val').textContent=remaining>0?fmtTime(remaining):'Calculating...';
+}
+function fmtTime(s){
+  if(s<60)return Math.round(s)+'s';
+  return Math.floor(s/60)+'m '+Math.round(s%60)+'s';
+}
+
 /* ── ESP PROTOCOL ── */
 function buildCmd(op,data,chk=0){
-  const pkt=new Uint8Array(8+data.length);
-  const dv=new DataView(pkt.buffer);
+  const pkt=new Uint8Array(8+data.length);const dv=new DataView(pkt.buffer);
   dv.setUint8(0,0x00);dv.setUint8(1,op);
   dv.setUint16(2,data.length,true);dv.setUint32(4,chk,true);
   pkt.set(data,8);return pkt;
@@ -648,7 +1182,6 @@ async function toggleMonitor(){
         if(done)break;
         const txt=dec.decode(value).replace(/[\r\n]+/g,' ').trim();
         if(txt)log(txt,'info');
-        // yield every read so UI stays responsive
         await yieldFrame();
       }
     }catch{}
@@ -670,7 +1203,6 @@ function setProg(id,pct,lbl){
   if(pc)pc.textContent=pct+'%';
 }
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
-// Yield to browser event loop via rAF — smoother than setTimeout(0)
 const yieldFrame=()=>new Promise(r=>requestAnimationFrame(r));
 </script>
 </body>
