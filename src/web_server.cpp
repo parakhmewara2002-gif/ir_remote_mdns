@@ -275,8 +275,10 @@ void WebUI::setupStaticRoutes() {
     // All modern browsers support gzip Content-Encoding transparently.
     // Feature 42: if SD has an asset override for index.html.gz, serve it from SD.
     auto serveIndex = [](AsyncWebServerRequest* req) {
-        // Need contiguous block for response buffer — reject if fragmented
-        if (heap_caps_get_largest_free_block(MALLOC_CAP_8BIT) < 3000) {
+        uint32_t blk = heap_caps_get_largest_free_block(MALLOC_CAP_8BIT);
+        Serial.printf("[WEB] serveIndex req - heap=%u maxBlock=%u\n",
+                      ESP.getFreeHeap(), blk);
+        if (blk < 3000) {
             req->send(503, "text/plain", "Low memory - please retry");
             return;
         }
