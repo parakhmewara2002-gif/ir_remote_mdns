@@ -48,6 +48,7 @@ public:
     bool        update(uint32_t id, const String& name, const String& icon);
     bool        remove(uint32_t id);
     bool        reorder(uint32_t id, uint8_t newOrder);
+    bool        reorderAll(const std::vector<uint32_t>& orderedIds);
     const IRGroup* findById(uint32_t id) const;
     size_t      size() const { return _groups.size(); }
 

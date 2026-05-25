@@ -74,6 +74,21 @@ bool GroupManager::reorder(uint32_t id, uint8_t newOrder) {
     return false;
 }
 
+bool GroupManager::reorderAll(const std::vector<uint32_t>& orderedIds) {
+    if (orderedIds.empty()) return false;
+    // Assign order values based on position in orderedIds array
+    for (size_t pos = 0; pos < orderedIds.size(); ++pos) {
+        uint32_t gid = orderedIds[pos];
+        for (auto& g : _groups) {
+            if (g.id == gid) { g.order = (uint8_t)pos; break; }
+        }
+    }
+    std::sort(_groups.begin(), _groups.end(),
+        [](const IRGroup& a, const IRGroup& b){ return a.order < b.order; });
+    saveToFile();
+    return true;
+}
+
 const IRGroup* GroupManager::findById(uint32_t id) const {
     for (const auto& g : _groups)
         if (g.id == id) return &g;

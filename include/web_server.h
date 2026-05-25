@@ -131,6 +131,7 @@ private:
     void handleClearButtons(AsyncWebServerRequest*);
     void handleTransmit    (AsyncWebServerRequest*, uint8_t*, size_t);
     void handlePwmTest     (AsyncWebServerRequest*, uint8_t*, size_t);  // POST /api/v1/ir/pwm-test
+    void handlePwmTestGet  (AsyncWebServerRequest*);                     // GET  /api/v1/ir/pwm-test?freq=38&duty=33
     void handlePwmInfo     (AsyncWebServerRequest*);                     // GET  /api/v1/ir/pwm-info
     void handleExport      (AsyncWebServerRequest*);
     void handleImport      (AsyncWebServerRequest*, uint8_t*, size_t);

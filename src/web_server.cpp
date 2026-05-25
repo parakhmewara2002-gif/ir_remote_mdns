@@ -407,6 +407,12 @@ void WebUI::setupApiRoutes() {
         ([this](AsyncWebServerRequest* req, uint8_t* d, size_t l){
             handlePwmTest(req, d, l); }));
 
+    // GET /api/v1/ir/pwm-test?freq=38&duty=33
+    // Convenience GET alias for the PWM test (same transmit logic as the POST version).
+    // Query params: freq (kHz, default 38), duty (ignored - hardware uses 50%).
+    _server.on("/api/v1/ir/pwm-test", HTTP_GET,
+        [this](AsyncWebServerRequest* req) { handlePwmTestGet(req); });
+
     // GET /api/v1/ir/pwm-info
     // Returns PWM capabilities: valid freq range, default, current emitter pins.
     _server.on("/api/v1/ir/pwm-info", HTTP_GET,
@@ -761,6 +767,33 @@ void WebUI::handlePwmTest(AsyncWebServerRequest* req, uint8_t* d, size_t l) {
     sendJson(req, ok ? 200 : 500, out);
 }
 
+// ── GET /api/v1/ir/pwm-test?freq=38&duty=33 ──────────────────
+// GET alias for the POST pwm-test handler.
+// Reads freq (kHz) from query param; duty param is accepted but ignored
+// (ESP32 ledc hardware uses fixed ~50% duty for IR which is optimal).
+void WebUI::handlePwmTestGet(AsyncWebServerRequest* req) {
+    uint16_t freqKHz = IR_DEFAULT_FREQ_KHZ;
+    if (req->hasParam("freq")) {
+        int f = req->getParam("freq")->value().toInt();
+        if (f >= 20 && f <= 60) freqKHz = (uint16_t)f;
+    }
+    static const uint16_t testPulses[] = { 9000, 4500, 560, 560 };
+    const size_t numPulses = sizeof(testPulses) / sizeof(testPulses[0]);
+    bool ok = irTransmitter.transmitRaw(testPulses, numPulses, freqKHz);
+    JsonDocument resp;
+    resp["ok"]         = ok;
+    resp["freqKHz"]    = freqKHz;
+    resp["pulseCount"] = (int)numPulses;
+    resp["durationUs"] = 9000 + 4500 + 560 + 560;
+    resp["note"] = ok
+        ? String("NEC AGC burst at ") + freqKHz + " kHz"
+        : "No active emitters";
+    String out;
+    out.reserve(256);
+    serializeJson(resp, out);
+    sendJson(req, ok ? 200 : 500, out);
+}
+
 // ── PWM capabilities info ─────────────────────────────────────
 // Returns valid carrier frequency range and current emitter config.
 // UI uses this to build the frequency selector with correct bounds.
@@ -1028,6 +1061,17 @@ void WebUI::handleReorderGroup(AsyncWebServerRequest* req, uint8_t* d, size_t l)
     JsonDocument doc;
     if (deserializeJson(doc,d,l)!=DeserializationError::Ok)
         { sendJson(req,400,"{\"error\":\"JSON parse failed\"}"); return; }
+    // Frontend sends {order: [id1, id2, ...]} — full ordered array of group IDs
+    if (doc["order"].is<JsonArrayConst>()) {
+        std::vector<uint32_t> ids;
+        for (JsonVariantConst v : doc["order"].as<JsonArrayConst>())
+            ids.push_back(v.as<uint32_t>());
+        if (!groupMgr.reorderAll(ids))
+            { sendJson(req,400,"{\"error\":\"Reorder failed\"}"); return; }
+        sendJson(req,200,"{\"ok\":true}");
+        return;
+    }
+    // Legacy single-item form: {id, order}
     uint32_t id  = doc["id"]    | (uint32_t)0;
     uint8_t  ord = doc["order"] | (uint8_t)0;
     if (!groupMgr.reorder(id, ord))
@@ -1717,7 +1761,7 @@ void WebUI::setupSdRoutes() {
     // Backup / Restore
     POST_BODY("/api/sd/encrypt",
         ([](AsyncWebServerRequest* req, uint8_t*, size_t) {
-            _sendJson(req, 501, "{\"ok\":false,\"error\":\"File encryption not implemented\"}"); }));
+            sendJson(req, 501, "{\"ok\":false,\"error\":\"File encryption not implemented\"}"); }));
 
     POST_BODY("/api/sd/backup",
         ([this](AsyncWebServerRequest* req, uint8_t* d, size_t l) {
