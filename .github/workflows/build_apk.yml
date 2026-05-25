@@ -8,19 +8,18 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
-
     steps:
       - uses: actions/checkout@v4
 
       - uses: actions/setup-java@v4
         with:
-          distribution: 'zulu'
-          java-version: '17'
+          distribution: zulu
+          java-version: "17"
 
       - uses: subosito/flutter-action@v2
         with:
-          flutter-version: '3.22.0'
-          channel: 'stable'
+          flutter-version: "3.22.0"
+          channel: stable
           cache: true
 
       - name: Write local.properties
@@ -28,34 +27,31 @@ jobs:
           echo "flutter.sdk=$FLUTTER_ROOT" > flasher_app/android/local.properties
           echo "sdk.dir=$ANDROID_SDK_ROOT" >> flasher_app/android/local.properties
 
-      - name: Get dependencies
-        run: cd flasher_app && flutter pub get
+      - name: Flutter pub get
+        working-directory: flasher_app
+        run: flutter pub get
 
-      - name: Build APK
-        run: cd flasher_app && flutter build apk --release
+      - name: Flutter build APK
+        working-directory: flasher_app
+        run: flutter build apk --release
 
-      - name: Upload APK
+      - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: IR-Remote-Flasher-APK
+          name: IR-Remote-Flasher
           path: flasher_app/build/app/outputs/flutter-apk/app-release.apk
 
-      - name: Create Release
+      - name: Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: apk-v${{ github.run_number }}
-          name: "IR Remote Flasher APK v${{ github.run_number }}"
+          name: IR Remote Flasher APK v${{ github.run_number }}
           body: |
-            ## IR Remote Flasher — Android APK
+            Android APK — ESP32 IR Remote Flasher
 
-            ### Install karo:
-            1. APK download karo
-            2. Phone mein install karo (Unknown sources allow karo)
-            3. ESP32 ko USB OTG se connect karo
-            4. App open karo → Scan → Connect → Flash
+            Install: Download → Install (allow unknown sources) → USB OTG connect → Flash
 
-            ### Supported: CP2102, CH340, FTDI, ESP32-S3 Native USB
-            ### Android 5.0+ required
+            Supported chips: CP2102, CH340, FTDI, ESP32-S3
           files: flasher_app/build/app/outputs/flutter-apk/app-release.apk
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
