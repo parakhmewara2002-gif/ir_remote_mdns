@@ -26,6 +26,8 @@
 #include "bluetooth_module.h"
 #include "wifi_pen_module.h"  // WiFi Penetration Module
 #include "watchdog_manager.h" // Ultra Pro Watchdog - status fields
+#include "bt_a2dp.h"
+#include "speaker_module.h"
 #include <ctime>          // time(), localtime_r() for SD backup timestamps
 
 WebUI webUI;
@@ -110,32 +112,41 @@ WebUI::WebUI() : _server(HTTP_PORT), _ws(WS_PATH) {
 
 void WebUI::begin() {
     setupWebSocket();
-    setupBluetoothRoutes();
+    // BLE routes: only if BLE is enabled in config (saves ~18 routes = ~5KB)
+    if (btModule.isEnabled()) setupBluetoothRoutes();
     setupApiRoutes();
     setupGroupRoutes();
     setupSchedulerRoutes();
     setupWifiRoutes();
     setupGpioRoutes();
-    setupMacroRoutes();    // v2.2.0 internal LittleFS macros
-    setupSdRoutes();       // SD card API routes
-    setupModuleRoutes();   // Tasks 7-11: NFC/RFID/SubGHz/NRF24/System
-    setupModuleToggleRoutes(); // Module on/off switches
-    setupRestApiV1Routes(); // Batch 1: REST API v1
-    setupAuditRoutes();    // Batch 1: Audit Trail
-    setupDebugRoutes();    // Batch 1: Debug Panel
-    setupMicRoutes();      // Mic: I2S streaming + recording
-    setupMicPinsRoute();   // Mic: real-time pin conflict map
-    setupRuleRoutes();     // Batch 2: Rule/Automation Engine
-    setupAuthRoutes();     // Batch 3: User Authentication
-    setupCaptivePortal();  // Batch 3: Captive Portal (AP mode)
-    setupWatchdogRoutes(); // Batch 3: Self-Healing Watchdog
+    setupMacroRoutes();
+    setupSdRoutes();
+    // Hardware module routes: only register if at least one module is connected
+    // When all 4 are absent (common), skips ~49 routes saving ~14KB heap
+    if (nfcModule.isConnected() || rfidModule.isConnected() ||
+        subGhzModule.isConnected() || nrf24Module.isConnected()) {
+        setupModuleRoutes();
+    }
+    setupModuleToggleRoutes();
+    setupRestApiV1Routes();
+    setupAuditRoutes();
+    setupDebugRoutes();
+    // Mic routes: only if I2S mic is active (saves ~11 routes = ~3KB)
+    if (micModule.i2sActive()) { setupMicRoutes(); setupMicPinsRoute(); }
+    setupRuleRoutes();
+    setupAuthRoutes();
+    setupCaptivePortal();
+    setupWatchdogRoutes();
     setupLogRoutes();
-    setupWpenRoutes();     // WiFi Pen Module
-    setupAcRoutes();              // AC Non-Contact Detector
-    setupSdExtRoutes();           // SD extended routes (features 42-45)
-    setupWalkieTalkieRoutes();    // Walkie-Talkie
-    setupSpeakerRoutes();         // PAM8043 Speaker
-    setupA2dpRoutes();            // BT A2DP Sink
+    // WiFi Pen routes: only if enabled (saves ~27 routes = ~7.5KB)
+    if (wifiPen.enabled()) setupWpenRoutes();
+    setupAcRoutes();
+    setupSdExtRoutes();
+    setupWalkieTalkieRoutes();
+    // Speaker routes: only if enabled (saves ~8 routes = ~2.2KB)
+    if (speakerModule.isEnabled()) setupSpeakerRoutes();
+    // A2DP routes: only if enabled (saves ~8 routes = ~2.2KB)
+    if (btA2dp.isEnabled()) setupA2dpRoutes();
     setupStaticRoutes();          // must be last - catch-all
     _server.begin();
     Serial.printf(DEBUG_TAG " HTTP server on port %d\n", HTTP_PORT);

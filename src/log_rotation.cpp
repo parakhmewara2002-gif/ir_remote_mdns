@@ -212,6 +212,7 @@ String LogRotationManager::configJson() const {
 //  List archived logs
 // ─────────────────────────────────────────────────────────────
 String LogRotationManager::listArchivesJson() const {
+    if (ESP.getFreeHeap() < 20000) return "{\"archives\":[],\"error\":\"low heap\"}";
     String out = "{\"archives\":[";
     bool first = true;
     File dir = LittleFS.open(LOG_ARCHIVE_DIR);
