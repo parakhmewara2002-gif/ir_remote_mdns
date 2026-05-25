@@ -337,9 +337,6 @@ void WebUI::setupStaticRoutes() {
     _server.on("/index.html", HTTP_GET, serveIndex);
     _server.on("/index.htm",  HTTP_GET, serveIndex);
 
-    // serveStatic for all other assets (css, js, images if any).
-    // Does NOT handle "/" itself - our specific handler above takes priority.
-    // setDefaultFile("index.html.gz") ensures any sub-path also serves the SPA.
     _server.serveStatic("/", LittleFS, "/")
            .setCacheControl("max-age=600")
            .setDefaultFile("index.html.gz");

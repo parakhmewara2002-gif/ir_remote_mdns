@@ -106,7 +106,7 @@
 #define CFG_FILE              "/config.json"
 #define GROUPS_FILE           "/groups.json"
 #define SCHEDULES_FILE        "/schedules.json"
-#define MAX_BUTTONS           64      // was 128 — each IRButton ~150B; 64 saves ~10KB pre-alloc
+#define MAX_BUTTONS           32      // was 64 — reserve(32) saves ~2KB vs reserve(64)
 #define MAX_RAW_EDGES         512
 
 // ── Backup & Restore limits ───────────────────────────────────
