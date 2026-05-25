@@ -26,8 +26,8 @@
 // (which runs in its own task and never blocks loop() directly).
 #define WDT_LOOP_MAX_MS           500UL
 #define WDT_LOOP_REBOOT_MS        30000UL
-#define WDT_HEAP_MIN_BYTES        20000UL
-#define WDT_HEAP_CRITICAL_BYTES   12000UL
+#define WDT_HEAP_MIN_BYTES        13000UL   // was 20000 — realistic floor for this build
+#define WDT_HEAP_CRITICAL_BYTES   8000UL    // was 12000 — only reboot if truly exhausted
 #define WDT_MAX_CRASHES           20
 #define WDT_PING_INTERVAL_MS      60000UL
 #define WDT_HEAP_CHECK_MS         30000UL

@@ -275,6 +275,11 @@ void WebUI::setupStaticRoutes() {
     // All modern browsers support gzip Content-Encoding transparently.
     // Feature 42: if SD has an asset override for index.html.gz, serve it from SD.
     auto serveIndex = [](AsyncWebServerRequest* req) {
+        // Need contiguous block for response buffer — reject if fragmented
+        if (heap_caps_get_largest_free_block(MALLOC_CAP_8BIT) < 10000) {
+            req->send(503, "text/plain", "Low memory - please retry");
+            return;
+        }
         // Feature 42: SD asset override check
         if (sdMgr.hasAsset("index.html.gz")) {
             String sdPath = sdMgr.assetPath("index.html.gz");
@@ -1308,7 +1313,10 @@ void WebUI::broadcastStatus() {
     // edge under fragmentation pressure, leading to a silently truncated
     // status frame or an alloc failure mid-build. Skipping is safe: the next
     // 5s tick will retry, and _statusDirty preserves the "needs send" bit.
-    if (ESP.getFreeHeap() < 16384) { _statusDirty = true; return; }
+    if (ESP.getFreeHeap() < 16384 ||
+        heap_caps_get_largest_free_block(MALLOC_CAP_8BIT) < 8192) {
+        _statusDirty = true; return;
+    }
 
     // FIX-2: delta suppression - only serialize and broadcast when something
     // actually changed. Saves ~15 function calls + JsonDocument every 5s.

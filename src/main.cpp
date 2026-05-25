@@ -70,7 +70,7 @@ portMUX_TYPE s_restartMux = portMUX_INITIALIZER_UNLOCKED;
 volatile uint32_t s_restartAt = 0;
 
 static unsigned long s_lastStatusBroadcast = 0;
-#define STATUS_BROADCAST_INTERVAL_MS 3000
+#define STATUS_BROADCAST_INTERVAL_MS 15000  // was 3s — frequent alloc/free fragments heap
 
 // ─────────────────────────────────────────────────────────────
 void setup() {
