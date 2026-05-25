@@ -862,6 +862,8 @@ async function connectDevice(){
 
 async function disconnectDevice(){
   if(flashing){toast('Flash in progress, please wait...','err');return;}
+  const discbtn=document.getElementById('btn-disconnect');
+  discbtn.disabled=true;
   monitoring=false;
   if(monReader){try{await monReader.cancel();}catch{}}
   if(port){try{await port.close();}catch{};port=null;}
@@ -887,6 +889,8 @@ async function disconnectDevice(){
   toast(t('toast_disconnected'),'warn');
   log('Disconnected','warn');
   window.onbeforeunload=null;
+  // btn-disconnect is hidden by this point; re-enable for next connection cycle
+  discbtn.disabled=false;
 }
 
 /* ── BACKUP ── */
@@ -909,6 +913,7 @@ async function backupFirmware(){
     writer.releaseLock();
   }
   // Collect response bytes and SLIP-decode them
+  if(port.readable.locked){toast('Serial port busy — stop monitor first','err');document.getElementById('btn-backup').disabled=false;return;}
   const reader=port.readable.getReader();
   const rawBytes=[];let total=0;
   const timeout=setTimeout(()=>reader.cancel(),15000);
@@ -1021,7 +1026,7 @@ async function readPartitions(){
     {name:'coredump',type:'data',subtype:'coredump',offset:'0x3C0000',size:'0x040000'},
   ];
   const tbody=document.getElementById('pt-body');
-  tbody.innerHTML='';
+  while(tbody.firstChild)tbody.removeChild(tbody.firstChild);
   parts.forEach(p=>{
     const tr=document.createElement('tr');
     // Use textContent to avoid XSS
@@ -1046,6 +1051,9 @@ async function sendWifi(){
   const ssid=document.getElementById('wifi-ssid').value.trim();
   const pass=document.getElementById('wifi-pass').value.trim();
   if(!ssid){toast('SSID enter karo — field empty hai','warn');return;}
+  const wifibtn=document.getElementById('btn-wifi');
+  wifibtn.disabled=true;
+  if(port.writable.locked){toast('Serial port busy — try again','err');wifibtn.disabled=false;return;}
   const writer=port.writable.getWriter();
   try{
     const cmd='wifi:'+ssid+':'+pass+'\n';
@@ -1053,7 +1061,7 @@ async function sendWifi(){
     log('WiFi config sent: '+ssid,'ok');
     toast(t('toast_wifi_sent'),'ok');
   }catch(e){log('WiFi send error: '+e.message,'err');toast('WiFi send failed','err');}
-  finally{try{writer.releaseLock();}catch{}}
+  finally{try{writer.releaseLock();}catch{};wifibtn.disabled=false;}
 }
 
 /* ── ERASE ── */
@@ -1102,7 +1110,6 @@ async function startFlash(){
   if(!port){toast(t('err_no_port'),'err');return;}
   if(Object.keys(bufs).length<FILES.length){toast(t('err_no_files'),'warn');return;}
   if(flashing){toast(t('err_flashing'),'warn');return;}
-  document.getElementById('btn-flash').disabled=true;
   // Stop monitor if active before flashing
   if(monitoring){
     monitoring=false;
@@ -1151,6 +1158,7 @@ async function startFlash(){
       writer.releaseLock();
       try{await readResponse(2000);log('FLASH_BEGIN ACK ✅','ok');}
       catch(e){log('FLASH_BEGIN response: '+e.message,'warn');}
+      if(port.writable.locked)throw new Error('Port write stream locked after FLASH_BEGIN');
       writer=port.writable.getWriter();
       await yieldFrame();
 
@@ -1170,6 +1178,7 @@ async function startFlash(){
           writer.releaseLock();
           writer=null;
           try{await readResponse(1000);}catch(e){errorCount++;log('FLASH_DATA warn block '+seq+': '+e.message,'warn');}
+          if(port.writable.locked)throw new Error('Port write stream locked during FLASH_DATA');
           writer=port.writable.getWriter();
         }catch{errorCount++;}
         offset+=chunk.length;flashDoneBytes+=chunk.length;
@@ -1187,6 +1196,7 @@ async function startFlash(){
 
     await hardReset(writer);
     setProg('flash',100,'Flash complete!');
+    document.getElementById('flash-wrap').style.display='none';
     document.getElementById('eta-val').textContent='Done!';
     log('🎉 Flash complete! Device boot ho raha hai...','ok');
     log('Open: http://ir-remote.local — if link fails, check router for device IP','ok');
@@ -1293,6 +1303,8 @@ async function readResponse(timeoutMs=500){
   if(rawBytes.length===0)throw new Error('No response from device — check BOOT mode');
   const decoded=slipDecode(new Uint8Array(rawBytes));
   if(decoded.length>=10){
+    // decoded[0]=0x01 (response direction), decoded[1]=opcode, decoded[8]=status, decoded[9]=error
+    if(decoded[0]!==0x01)throw new Error('Invalid response direction: 0x'+decoded[0].toString(16));
     const status=decoded[8];
     if(status!==0x00)throw new Error('ESP32 error response: status=0x'+status.toString(16)+' error=0x'+decoded[9].toString(16));
   }
@@ -1330,6 +1342,7 @@ async function enterBootloader(existingWriter){
   }
   if(!synced)throw new Error('SYNC failed — device not in bootloader mode. Hold BOOT, press RESET.');
   // Return a fresh writer for the caller to use
+  if(port.writable.locked)throw new Error('Port write stream locked after SYNC');
   return port.writable.getWriter();
 }
 async function hardReset(writer){
