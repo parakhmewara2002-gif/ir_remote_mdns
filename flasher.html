@@ -350,7 +350,7 @@ body.light .wifi-input{background:rgba(0,0,0,.05)}
       </div>
     </div>
     <div class="btn-row">
-      <button class="btn btn-primary" id="btn-dl" onclick="downloadAll()">⬇ Download Firmware</button>
+      <button class="btn btn-primary" id="btn-dl" onclick="downloadAll().catch(e=>{toast(e.message||'Download failed','err')})">⬇ Download Firmware</button>
     </div>
     <div id="dl-wrap" style="display:none" class="prog-wrap">
       <div class="prog-hd"><span id="dl-lbl">Downloading...</span><span id="dl-pct">0%</span></div>
@@ -376,8 +376,8 @@ body.light .wifi-input{background:rgba(0,0,0,.05)}
           </select>
         </div>
         <div class="btn-row">
-          <button class="btn btn-primary" id="btn-connect" onclick="connectDevice()">🔌 Connect</button>
-          <button class="btn btn-ghost" id="btn-disconnect" style="display:none" onclick="disconnectDevice()">⏏ Disconnect</button>
+          <button class="btn btn-primary" id="btn-connect" onclick="connectDevice().catch(e=>{toast(e.message||'Connect failed','err')})">🔌 Connect</button>
+          <button class="btn btn-ghost" id="btn-disconnect" style="display:none" onclick="disconnectDevice().catch(e=>{toast(e.message||'Disconnect failed','err')})">⏏ Disconnect</button>
         </div>
         <div id="conn-info"></div>
       </div>
@@ -389,7 +389,7 @@ body.light .wifi-input{background:rgba(0,0,0,.05)}
         <div class="step-lbl">Flash Erase (Optional)</div>
         <div class="step-desc">First time flash mein recommended — purana data saaf karta hai</div>
         <div class="btn-row">
-          <button class="btn btn-danger" id="btn-erase" disabled onclick="eraseFlash()">🗑 Erase Flash</button>
+          <button class="btn btn-danger" id="btn-erase" disabled onclick="eraseFlash().catch(e=>{toast(e.message||'Erase failed','err')})">🗑 Erase Flash</button>
         </div>
         <div id="erase-wrap" style="display:none" class="prog-wrap">
           <div class="prog-hd"><span>Erasing flash...</span><span id="erase-pct">0%</span></div>
@@ -405,8 +405,8 @@ body.light .wifi-input{background:rgba(0,0,0,.05)}
         <div class="step-desc">4 files sequentially flash hongi — device BOOT mode mein hona chahiye</div>
         <div class="alert aw">⚡ BOOT mode: BOOT button hold → RESET press → BOOT release</div>
         <div class="btn-row">
-          <button class="btn btn-primary" id="btn-flash" disabled onclick="startFlash()">⚡ <span data-i="btn_flash">Flash Now</span></button>
-          <button class="btn btn-backup" id="btn-backup" disabled onclick="backupFirmware()" title="Backup current firmware before flashing">💾 <span data-i="btn_backup">Backup First</span></button>
+          <button class="btn btn-primary" id="btn-flash" disabled onclick="startFlash().catch(e=>{toast(e.message||'Flash failed','err')})">⚡ <span data-i="btn_flash">Flash Now</span></button>
+          <button class="btn btn-backup" id="btn-backup" disabled onclick="backupFirmware().catch(e=>{toast(e.message||'Backup failed','err')})" title="Backup current firmware before flashing">💾 <span data-i="btn_backup">Backup First</span></button>
         </div>
         <div id="backup-wrap" style="display:none" class="prog-wrap">
           <div class="prog-hd"><span id="backup-lbl">Reading firmware...</span><span id="backup-pct">0%</span></div>
@@ -425,7 +425,7 @@ body.light .wifi-input{background:rgba(0,0,0,.05)}
     <div class="log-box" id="log"></div>
     <div class="btn-row">
       <button class="btn btn-ghost" style="font-size:11px;padding:6px 12px" onclick="clearLog()">🗑 Clear</button>
-      <button class="btn btn-ghost" style="font-size:11px;padding:6px 12px" id="btn-mon" disabled onclick="toggleMonitor()">📡 Monitor</button>
+      <button class="btn btn-ghost" style="font-size:11px;padding:6px 12px" id="btn-mon" disabled onclick="toggleMonitor().catch(e=>{toast(e.message||'Monitor error','err')})">📡 Monitor</button>
     </div>
   </div>
 
@@ -445,8 +445,8 @@ body.light .wifi-input{background:rgba(0,0,0,.05)}
       <tr><td data-i="chip_features">Features</td><td id="ci-features">—</td></tr>
     </table>
     <div class="btn-row">
-      <button class="btn btn-ghost" id="btn-chipread" disabled onclick="readChipInfo()" style="font-size:12px;padding:7px 14px">🔍 <span data-i="btn_readchip">Read Chip Info</span></button>
-      <button class="btn btn-ghost" id="btn-healthcheck" disabled onclick="healthCheck()" style="font-size:12px;padding:7px 14px">💓 <span data-i="btn_health">Health Check</span></button>
+      <button class="btn btn-ghost" id="btn-chipread" disabled onclick="readChipInfo().catch(e=>{toast(e.message||'Chip read failed','err')})" style="font-size:12px;padding:7px 14px">🔍 <span data-i="btn_readchip">Read Chip Info</span></button>
+      <button class="btn btn-ghost" id="btn-healthcheck" disabled onclick="healthCheck().catch(e=>{toast(e.message||'Health check failed','err')})" style="font-size:12px;padding:7px 14px">💓 <span data-i="btn_health">Health Check</span></button>
     </div>
   </div>
 
@@ -459,7 +459,7 @@ body.light .wifi-input{background:rgba(0,0,0,.05)}
       <tbody id="pt-body"></tbody>
     </table>
     <div class="btn-row">
-      <button class="btn btn-ghost" id="btn-ptread" disabled onclick="readPartitions()" style="font-size:12px;padding:7px 14px">📋 <span data-i="btn_readpt">Read Partitions</span></button>
+      <button class="btn btn-ghost" id="btn-ptread" disabled onclick="readPartitions().catch(e=>{toast(e.message||'Partition read failed','err')})" style="font-size:12px;padding:7px 14px">📋 <span data-i="btn_readpt">Read Partitions</span></button>
     </div>
   </div>
 
@@ -472,7 +472,7 @@ body.light .wifi-input{background:rgba(0,0,0,.05)}
       <input class="wifi-input" id="wifi-pass" type="password" placeholder="Password" data-i-ph="wifi_pass">
     </div>
     <div class="btn-row">
-      <button class="btn btn-primary" id="btn-wifi" disabled onclick="sendWifi()" style="font-size:12px">📶 <span data-i="btn_sendwifi">Send WiFi Config</span></button>
+      <button class="btn btn-primary" id="btn-wifi" disabled onclick="sendWifi().catch(e=>{toast(e.message||'WiFi send failed','err')})" style="font-size:12px">📶 <span data-i="btn_sendwifi">Send WiFi Config</span></button>
     </div>
   </div>
 
@@ -762,8 +762,11 @@ async function downloadAll(){
       }
       if(!buf)throw new Error('All download attempts failed');
       // Compute SHA-256 and display for integrity verification
-      const hashBuf=await crypto.subtle.digest('SHA-256',buf);
-      const hashHex=Array.from(new Uint8Array(hashBuf)).map(b=>b.toString(16).padStart(2,'0')).join('');
+      let hashHex='unavailable (requires HTTPS)';
+      if(crypto&&crypto.subtle){
+        const hashBuf=await crypto.subtle.digest('SHA-256',buf);
+        hashHex=Array.from(new Uint8Array(hashBuf)).map(b=>b.toString(16).padStart(2,'0')).join('');
+      }
       bufs[f.key]=buf;
       const kb=(buf.byteLength/1024).toFixed(1);
       document.getElementById('sz-'+f.key).textContent=kb+' KB';
@@ -854,6 +857,7 @@ async function connectDevice(){
     // Warn before page close during flash
     window.onbeforeunload=()=>flashing?'Flash chal rahi hai! Page band mat karo.':null;
   }catch(e){
+    port=null;
     if(e.name!=='NotFoundError')log('Connect failed: '+e.message,'err');
     else log('Port selection cancelled','warn');
     connectBtn.disabled=false;
@@ -901,17 +905,15 @@ async function backupFirmware(){
   toast('Backup chal rahi hai...','warn',8000);
   document.getElementById('backup-wrap').style.display='block';
   document.getElementById('btn-backup').disabled=true;
-  // enterBootloader returns a fresh writer after SYNC
-  let writer=await enterBootloader(null);
+  let writer;
   try{
+  writer=await enterBootloader(null);
     // flash_read cmd: addr, size, block_size, max_blocks
     const rd=new Uint8Array(16);const dv=new DataView(rd.buffer);
     dv.setUint32(0,0x10000,true);dv.setUint32(4,BACKUP_SIZE,true);
     dv.setUint32(8,BLOCK_SIZE,true);dv.setUint32(12,0x800,true);
     await writer.write(slipEncode(buildCmd(0x0e,rd)));
-  }finally{
-    writer.releaseLock();
-  }
+  if(writer){try{writer.releaseLock();}catch{}}
   // Collect response bytes and SLIP-decode them
   if(port.readable.locked){toast('Serial port busy — stop monitor first','err');document.getElementById('btn-backup').disabled=false;return;}
   const reader=port.readable.getReader();
@@ -943,8 +945,6 @@ async function backupFirmware(){
       }
     }else{decoded.push(b);}
   }
-  document.getElementById('backup-wrap').style.display='none';
-  document.getElementById('btn-backup').disabled=false;
   if(decoded.length<10){
     log('Backup error: no data received — device must be in bootloader mode','err');
     toast('Backup failed: no data','err');return;
@@ -955,6 +955,12 @@ async function backupFirmware(){
   a.href=url;a.download='firmware_backup_'+Date.now()+'.bin';
   a.click();URL.revokeObjectURL(url);
   log('Backup saved ✅ ('+decoded.length+' bytes)','ok');toast(t('toast_backup_done'),'ok');
+  }catch(e){
+    log('Backup error: '+e.message,'err');toast('Backup failed','err');
+  }finally{
+    document.getElementById('backup-wrap').style.display='none';
+    document.getElementById('btn-backup').disabled=false;
+  }
 }
 
 /* ── CHIP INFO ── */
@@ -1125,6 +1131,7 @@ async function startFlash(){
   // Flash lock — confirm dialog
   if(!confirm(t('confirm_flash')))return;
   flashing=true;
+  document.getElementById('lang-sel').disabled=true;
   errorCount=0;totalWrites=0;
   document.getElementById('btn-flash').disabled=true;
   document.getElementById('flash-wrap').style.display='block';
@@ -1146,6 +1153,7 @@ async function startFlash(){
     for(let i=0;i<FILES.length;i++){
       const f=FILES[i];
       const buf=new Uint8Array(bufs[f.key]);
+      if(buf.length===0)throw new Error(f.name+' is empty — re-download firmware');
       document.getElementById('fi-'+f.key).className='fc flashing';
       document.getElementById('fs-'+f.key).textContent='⚡';
       log('Flashing '+f.name+' @ 0x'+f.addr.toString(16)+'...','info');
@@ -1155,9 +1163,9 @@ async function startFlash(){
       dv0.setUint32(8,BLOCK_SIZE,true);dv0.setUint32(12,f.addr,true);
       await writer.write(slipEncode(buildCmd(0x02,bd)));totalWrites++;
       // Validate FLASH_BEGIN response
-      writer.releaseLock();
+      writer.releaseLock();writer=null;
       try{await readResponse(2000);log('FLASH_BEGIN ACK ✅','ok');}
-      catch(e){log('FLASH_BEGIN response: '+e.message,'warn');}
+      catch(e){throw new Error('FLASH_BEGIN failed — device not ready: '+e.message);}
       if(port.writable.locked)throw new Error('Port write stream locked after FLASH_BEGIN');
       writer=port.writable.getWriter();
       await yieldFrame();
@@ -1170,8 +1178,8 @@ async function startFlash(){
         dv.setUint32(0,chunk.length,true);dv.setUint32(4,seq++,true);
         dv.setUint32(8,0,true);dv.setUint32(12,0,true);
         block.set(chunk,16);
-        // XOR checksum: seed 0xEF, XOR all data bytes
-        let chk=0xEF;for(const b of chunk)chk^=b;
+        // XOR checksum: seed 0xEF, XOR all block bytes (header + chunk)
+        let chk=0xEF;for(const b of block)chk^=b;
         try{
           await writer.write(slipEncode(buildCmd(0x03,block,chk)));totalWrites++;
           // Validate every FLASH_DATA block for data integrity
@@ -1180,7 +1188,7 @@ async function startFlash(){
           try{await readResponse(1000);}catch(e){errorCount++;log('FLASH_DATA warn block '+seq+': '+e.message,'warn');}
           if(port.writable.locked)throw new Error('Port write stream locked during FLASH_DATA');
           writer=port.writable.getWriter();
-        }catch{errorCount++;}
+        }catch(e){errorCount++;log('Block write error: '+e.message,'warn');}
         offset+=chunk.length;flashDoneBytes+=chunk.length;
         if(++yieldCounter%8===0){
           updateFlashProgress(f.name);
@@ -1216,6 +1224,7 @@ async function startFlash(){
     if(writer)try{writer.releaseLock();}catch{}
     flashing=false;
     document.getElementById('btn-flash').disabled=false;
+    document.getElementById('lang-sel').disabled=false;
   }
 }
 
@@ -1275,13 +1284,13 @@ async function readResponse(timeoutMs=500){
     outer: while(Date.now()<deadline){
       const remaining=deadline-Date.now();
       if(remaining<=0)break;
-      let value,done;
+      let value,done,timeoutId;
       try{
-        const r=await Promise.race([
-          reader.read(),
-          new Promise((_,rej)=>setTimeout(()=>rej(new Error('timeout')),Math.min(remaining,200)))
+        const result=await Promise.race([
+          reader.read().then(r=>{clearTimeout(timeoutId);return r;}),
+          new Promise((_,rej)=>{timeoutId=setTimeout(()=>rej(new Error('read timeout')),Math.min(remaining,200));})
         ]);
-        value=r.value;done=r.done;
+        value=result.value;done=result.done;
       }catch{break;}
       if(done)break;
       for(const b of value){
@@ -1289,11 +1298,10 @@ async function readResponse(timeoutMs=500){
         const idx=rawBytes.length-1;
         if(b===0xC0){
           if(frameStart===-1){
-            frameStart=idx; // opening 0xC0
-          } else if(idx>frameStart+1){
-            break outer; // closing 0xC0 found with data between
+            frameStart=idx;
+          } else if(idx>frameStart){
+            break outer; // closing 0xC0 — frame complete
           }
-          // else: two consecutive 0xC0 (empty frame), reset frameStart
         }
       }
     }
@@ -1303,7 +1311,6 @@ async function readResponse(timeoutMs=500){
   if(rawBytes.length===0)throw new Error('No response from device — check BOOT mode');
   const decoded=slipDecode(new Uint8Array(rawBytes));
   if(decoded.length>=10){
-    // decoded[0]=0x01 (response direction), decoded[1]=opcode, decoded[8]=status, decoded[9]=error
     if(decoded[0]!==0x01)throw new Error('Invalid response direction: 0x'+decoded[0].toString(16));
     const status=decoded[8];
     if(status!==0x00)throw new Error('ESP32 error response: status=0x'+status.toString(16)+' error=0x'+decoded[9].toString(16));
@@ -1315,11 +1322,15 @@ async function readResponse(timeoutMs=500){
 async function enterBootloader(existingWriter){
   // Release any existing writer so we can freely read/write during sync
   if(existingWriter){try{existingWriter.releaseLock();}catch{}}
-  await port.setSignals({dataTerminalReady:false,requestToSend:true});
-  await sleep(100);
-  await port.setSignals({dataTerminalReady:true,requestToSend:false});
-  await sleep(50);
-  await port.setSignals({dataTerminalReady:false,requestToSend:false});
+  try{
+    await port.setSignals({dataTerminalReady:false,requestToSend:true});
+    await sleep(100);
+    await port.setSignals({dataTerminalReady:true,requestToSend:false});
+    await sleep(50);
+    await port.setSignals({dataTerminalReady:false,requestToSend:false});
+  }catch(e){
+    log('DTR/RTS signals not supported by this adapter — try manual BOOT mode','warn');
+  }
   await sleep(500);
   const sd=new Uint8Array(36);
   sd[0]=0x07;sd[1]=0x07;sd[2]=0x12;sd[3]=0x20;sd.fill(0x55,4);
@@ -1362,7 +1373,10 @@ async function toggleMonitor(){
   monitoring=!monitoring;
   const btn=document.getElementById('btn-mon');
   if(monitoring){
-    if(port.readable.locked){toast('Serial port is busy — try again later','warn');monitoring=false;return;}
+    if(port.readable.locked){
+      if(monReader){try{monReader.releaseLock();}catch{};monReader=null;}
+      if(port.readable.locked){toast('Serial port is busy — try again later','warn');monitoring=false;return;}
+    }
     btn.textContent='⏹ Stop';
     log('Serial monitor chalu...','ok');
     monReader=port.readable.getReader();
@@ -1375,7 +1389,7 @@ async function toggleMonitor(){
         if(txt)log(txt,'info');
         await yieldFrame();
       }
-    }catch{}
+    }catch(e){if(e.name!=='AbortError')log('Monitor error: '+e.message,'warn');}
     try{monReader.releaseLock();}catch{}
   }else{
     btn.textContent='📡 Monitor';
