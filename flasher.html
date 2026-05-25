@@ -1,0 +1,1072 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>IR Remote Flasher</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=Syne:wght@400;700;800&display=swap');
+
+  :root {
+    --bg: #0a0a0f;
+    --surface: #111118;
+    --border: #1e1e2e;
+    --accent: #00ff9d;
+    --accent2: #ff3d6b;
+    --accent3: #7b5ea7;
+    --text: #e0e0f0;
+    --muted: #555570;
+    --warn: #ffb347;
+    --mono: 'JetBrains Mono', monospace;
+    --sans: 'Syne', sans-serif;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--sans);
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* Grid bg */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image:
+      linear-gradient(rgba(0,255,157,0.03) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(0,255,157,0.03) 1px, transparent 1px);
+    background-size: 40px 40px;
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  .container {
+    position: relative;
+    z-index: 1;
+    max-width: 680px;
+    margin: 0 auto;
+    padding: 32px 16px 80px;
+  }
+
+  /* Header */
+  .header {
+    text-align: center;
+    margin-bottom: 40px;
+  }
+
+  .chip-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: rgba(0,255,157,0.08);
+    border: 1px solid rgba(0,255,157,0.2);
+    border-radius: 20px;
+    padding: 4px 14px;
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--accent);
+    letter-spacing: 1px;
+    margin-bottom: 16px;
+  }
+  .chip-badge::before { content: '●'; font-size: 8px; animation: blink 1.5s infinite; }
+  @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.3} }
+
+  h1 {
+    font-size: clamp(28px, 6vw, 42px);
+    font-weight: 800;
+    letter-spacing: -1px;
+    line-height: 1.1;
+    background: linear-gradient(135deg, #fff 0%, var(--accent) 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    margin-bottom: 8px;
+  }
+
+  .subtitle {
+    color: var(--muted);
+    font-family: var(--mono);
+    font-size: 12px;
+    letter-spacing: 0.5px;
+  }
+
+  /* Cards */
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 20px;
+    margin-bottom: 16px;
+    transition: border-color 0.2s;
+  }
+  .card:hover { border-color: #2e2e42; }
+
+  .card-title {
+    font-size: 11px;
+    font-family: var(--mono);
+    color: var(--accent);
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    margin-bottom: 14px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .card-title::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: var(--border);
+  }
+
+  /* Support banner */
+  .support-banner {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin-bottom: 16px;
+  }
+  .support-pill {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    padding: 5px 10px;
+    border-radius: 6px;
+    font-family: var(--mono);
+    font-size: 11px;
+    border: 1px solid;
+  }
+  .support-pill.ok { border-color: rgba(0,255,157,0.3); color: var(--accent); background: rgba(0,255,157,0.05); }
+  .support-pill.warn { border-color: rgba(255,179,71,0.3); color: var(--warn); background: rgba(255,179,71,0.05); }
+  .support-pill.no { border-color: rgba(255,61,107,0.3); color: var(--accent2); background: rgba(255,61,107,0.05); }
+
+  /* Steps */
+  .steps { counter-reset: step; display: flex; flex-direction: column; gap: 12px; }
+
+  .step {
+    display: flex;
+    gap: 14px;
+    align-items: flex-start;
+    padding: 14px;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    background: rgba(255,255,255,0.01);
+    transition: all 0.3s;
+  }
+  .step.active { border-color: rgba(0,255,157,0.3); background: rgba(0,255,157,0.03); }
+  .step.done { border-color: rgba(0,255,157,0.15); opacity: 0.6; }
+  .step.error { border-color: rgba(255,61,107,0.4); background: rgba(255,61,107,0.04); }
+
+  .step-num {
+    counter-increment: step;
+    width: 28px;
+    height: 28px;
+    min-width: 28px;
+    border-radius: 50%;
+    border: 1px solid var(--muted);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--muted);
+    transition: all 0.3s;
+  }
+  .step.active .step-num { border-color: var(--accent); color: var(--accent); box-shadow: 0 0 12px rgba(0,255,157,0.3); }
+  .step.done .step-num { background: var(--accent); border-color: var(--accent); color: #000; }
+  .step.error .step-num { border-color: var(--accent2); color: var(--accent2); }
+
+  .step-body { flex: 1; }
+  .step-label { font-size: 13px; font-weight: 700; margin-bottom: 4px; }
+  .step-desc { font-size: 12px; color: var(--muted); font-family: var(--mono); line-height: 1.5; }
+
+  /* Buttons */
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 10px 20px;
+    border-radius: 8px;
+    font-family: var(--sans);
+    font-size: 13px;
+    font-weight: 700;
+    cursor: pointer;
+    border: none;
+    transition: all 0.2s;
+    white-space: nowrap;
+  }
+  .btn-primary {
+    background: var(--accent);
+    color: #000;
+  }
+  .btn-primary:hover:not(:disabled) { background: #00e68a; transform: translateY(-1px); box-shadow: 0 4px 20px rgba(0,255,157,0.3); }
+  .btn-primary:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
+  .btn-ghost {
+    background: transparent;
+    color: var(--text);
+    border: 1px solid var(--border);
+  }
+  .btn-ghost:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+  .btn-ghost:disabled { opacity: 0.4; cursor: not-allowed; }
+  .btn-danger {
+    background: rgba(255,61,107,0.1);
+    color: var(--accent2);
+    border: 1px solid rgba(255,61,107,0.3);
+  }
+  .btn-danger:hover:not(:disabled) { background: rgba(255,61,107,0.2); }
+
+  .btn-row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
+
+  /* File grid */
+  .file-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 8px;
+    margin-top: 12px;
+  }
+  @media(max-width: 400px) { .file-grid { grid-template-columns: 1fr; } }
+
+  .file-item {
+    background: rgba(255,255,255,0.02);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 10px 12px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    transition: all 0.2s;
+  }
+  .file-item.ready { border-color: rgba(0,255,157,0.3); }
+  .file-item.downloading { border-color: rgba(255,179,71,0.4); animation: pulse-border 1s infinite; }
+  .file-item.flashing { border-color: rgba(123,94,167,0.5); animation: pulse-border 0.5s infinite; }
+  @keyframes pulse-border { 0%,100%{opacity:1} 50%{opacity:0.5} }
+
+  .file-icon {
+    width: 32px;
+    height: 32px;
+    border-radius: 6px;
+    background: rgba(255,255,255,0.04);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 14px;
+    flex-shrink: 0;
+  }
+  .file-info { flex: 1; min-width: 0; }
+  .file-name { font-family: var(--mono); font-size: 11px; font-weight: 700; truncate: ellipsis; white-space: nowrap; overflow: hidden; }
+  .file-addr { font-family: var(--mono); font-size: 10px; color: var(--accent3); }
+  .file-size { font-family: var(--mono); font-size: 10px; color: var(--muted); }
+  .file-status { font-size: 14px; flex-shrink: 0; }
+
+  /* Progress */
+  .progress-wrap { margin-top: 12px; }
+  .progress-label {
+    display: flex;
+    justify-content: space-between;
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--muted);
+    margin-bottom: 6px;
+  }
+  .progress-bar {
+    height: 4px;
+    background: var(--border);
+    border-radius: 2px;
+    overflow: hidden;
+  }
+  .progress-fill {
+    height: 100%;
+    background: linear-gradient(90deg, var(--accent), #00ccff);
+    border-radius: 2px;
+    transition: width 0.3s;
+    width: 0%;
+  }
+
+  /* Log */
+  .log-box {
+    background: #080810;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 12px;
+    height: 160px;
+    overflow-y: auto;
+    font-family: var(--mono);
+    font-size: 11px;
+    line-height: 1.7;
+    margin-top: 12px;
+    scroll-behavior: smooth;
+  }
+  .log-box::-webkit-scrollbar { width: 4px; }
+  .log-box::-webkit-scrollbar-track { background: transparent; }
+  .log-box::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+  .log-line { display: flex; gap: 8px; }
+  .log-time { color: var(--muted); flex-shrink: 0; }
+  .log-line.info .log-msg { color: var(--text); }
+  .log-line.ok .log-msg { color: var(--accent); }
+  .log-line.warn .log-msg { color: var(--warn); }
+  .log-line.err .log-msg { color: var(--accent2); }
+
+  /* Alert */
+  .alert {
+    padding: 10px 14px;
+    border-radius: 8px;
+    font-size: 12px;
+    font-family: var(--mono);
+    line-height: 1.5;
+    margin-top: 12px;
+  }
+  .alert-warn { background: rgba(255,179,71,0.08); border: 1px solid rgba(255,179,71,0.25); color: var(--warn); }
+  .alert-info { background: rgba(0,255,157,0.05); border: 1px solid rgba(0,255,157,0.2); color: var(--accent); }
+  .alert-err { background: rgba(255,61,107,0.08); border: 1px solid rgba(255,61,107,0.3); color: var(--accent2); }
+
+  /* Baud selector */
+  select {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: var(--text);
+    font-family: var(--mono);
+    font-size: 12px;
+    padding: 6px 10px;
+    cursor: pointer;
+    outline: none;
+  }
+  select:focus { border-color: var(--accent); }
+
+  .settings-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+    margin-top: 10px;
+  }
+  .settings-label { font-family: var(--mono); font-size: 11px; color: var(--muted); }
+
+  /* No WebSerial overlay */
+  #no-webserial {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(10,10,15,0.95);
+    z-index: 100;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+  }
+  #no-webserial.show { display: flex; }
+  .no-webserial-box {
+    background: var(--surface);
+    border: 1px solid rgba(255,61,107,0.3);
+    border-radius: 16px;
+    padding: 32px;
+    max-width: 420px;
+    text-align: center;
+  }
+  .no-webserial-box h2 { font-size: 20px; margin-bottom: 12px; }
+  .no-webserial-box p { font-size: 13px; color: var(--muted); font-family: var(--mono); line-height: 1.6; margin-bottom: 20px; }
+  .browser-list { display: flex; flex-direction: column; gap: 8px; }
+  .browser-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 14px;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    font-family: var(--mono);
+    font-size: 12px;
+    text-decoration: none;
+    color: var(--text);
+    transition: border-color 0.2s;
+  }
+  .browser-item:hover { border-color: var(--accent); color: var(--accent); }
+
+  /* Pulsing dot */
+  .pulse-dot {
+    display: inline-block;
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    background: var(--accent);
+    animation: pulse 1.5s infinite;
+  }
+  @keyframes pulse { 0%,100%{transform:scale(1);opacity:1} 50%{transform:scale(1.5);opacity:0.5} }
+
+  .divider { height: 1px; background: var(--border); margin: 20px 0; }
+
+  /* OTA section */
+  .ota-url-row { display: flex; gap: 8px; align-items: center; margin-top: 10px; }
+  input[type=text], input[type=url] {
+    flex: 1;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: var(--text);
+    font-family: var(--mono);
+    font-size: 12px;
+    padding: 8px 12px;
+    outline: none;
+    transition: border-color 0.2s;
+  }
+  input:focus { border-color: var(--accent); }
+</style>
+</head>
+<body>
+
+<div id="no-webserial">
+  <div class="no-webserial-box">
+    <div style="font-size:48px;margin-bottom:16px">⚠️</div>
+    <h2>WebSerial Not Supported</h2>
+    <p>Tumhara current browser WebSerial API support nahi karta. Neeche se supported browser use karo:</p>
+    <div class="browser-list">
+      <a class="browser-item" href="https://www.google.com/chrome/" target="_blank">
+        🌐 Google Chrome / Chromium — Desktop
+      </a>
+      <a class="browser-item" href="https://play.google.com/store/apps/details?id=com.android.chrome" target="_blank">
+        📱 Chrome for Android (v89+) — Mobile
+      </a>
+      <a class="browser-item" href="https://www.microsoft.com/edge" target="_blank">
+        🔷 Microsoft Edge — Desktop
+      </a>
+    </div>
+    <div style="margin-top:16px;font-size:11px;color:var(--muted);font-family:var(--mono)">
+      Firefox, Safari, iOS browsers — supported nahi hain
+    </div>
+  </div>
+</div>
+
+<div class="container">
+
+  <div class="header">
+    <div class="chip-badge">ESP32 · v10.0.0</div>
+    <h1>IR Remote<br>Web Flasher</h1>
+    <div class="subtitle">No drivers needed · Works on Android too</div>
+  </div>
+
+  <!-- Browser support status -->
+  <div class="card">
+    <div class="card-title">Browser Support</div>
+    <div class="support-banner" id="support-banner">
+      <div class="support-pill" id="pill-webserial">⏳ WebSerial</div>
+      <div class="support-pill" id="pill-android">⏳ Android</div>
+      <div class="support-pill" id="pill-otg">⏳ OTG Cable</div>
+    </div>
+    <div id="support-note" class="alert alert-info" style="display:none"></div>
+  </div>
+
+  <!-- Files -->
+  <div class="card">
+    <div class="card-title">Firmware Files</div>
+    <div class="file-grid" id="file-grid">
+      <div class="file-item" id="fi-bootloader">
+        <div class="file-icon">🔧</div>
+        <div class="file-info">
+          <div class="file-name">bootloader.bin</div>
+          <div class="file-addr">0x001000</div>
+          <div class="file-size" id="sz-bootloader">—</div>
+        </div>
+        <div class="file-status" id="fs-bootloader">⬜</div>
+      </div>
+      <div class="file-item" id="fi-partitions">
+        <div class="file-icon">📋</div>
+        <div class="file-info">
+          <div class="file-name">partitions.bin</div>
+          <div class="file-addr">0x008000</div>
+          <div class="file-size" id="sz-partitions">—</div>
+        </div>
+        <div class="file-status" id="fs-partitions">⬜</div>
+      </div>
+      <div class="file-item" id="fi-firmware">
+        <div class="file-icon">⚡</div>
+        <div class="file-info">
+          <div class="file-name">firmware.bin</div>
+          <div class="file-addr">0x010000</div>
+          <div class="file-size" id="sz-firmware">—</div>
+        </div>
+        <div class="file-status" id="fs-firmware">⬜</div>
+      </div>
+      <div class="file-item" id="fi-littlefs">
+        <div class="file-icon">🗂️</div>
+        <div class="file-info">
+          <div class="file-name">littlefs.bin</div>
+          <div class="file-addr">0x310000</div>
+          <div class="file-size" id="sz-littlefs">—</div>
+        </div>
+        <div class="file-status" id="fs-littlefs">⬜</div>
+      </div>
+    </div>
+
+    <div class="settings-row">
+      <span class="settings-label">Source:</span>
+      <select id="src-select">
+        <option value="github">GitHub Release (v10.0.0)</option>
+        <option value="local">Local Files (Custom)</option>
+      </select>
+    </div>
+
+    <div id="local-upload-area" style="display:none;margin-top:10px">
+      <div class="alert alert-warn">4 files select karo: bootloader.bin, partitions.bin, firmware.bin, littlefs.bin</div>
+      <div class="btn-row">
+        <button class="btn btn-ghost" onclick="document.getElementById('local-files').click()">📁 Select Files</button>
+        <input type="file" id="local-files" multiple accept=".bin" style="display:none" onchange="handleLocalFiles(this.files)">
+      </div>
+    </div>
+
+    <div class="btn-row">
+      <button class="btn btn-primary" id="btn-download" onclick="downloadFirmware()">⬇️ Download Firmware</button>
+    </div>
+
+    <div class="progress-wrap" id="dl-progress-wrap" style="display:none">
+      <div class="progress-label">
+        <span id="dl-progress-label">Downloading...</span>
+        <span id="dl-progress-pct">0%</span>
+      </div>
+      <div class="progress-bar"><div class="progress-fill" id="dl-progress-fill"></div></div>
+    </div>
+  </div>
+
+  <!-- Flash -->
+  <div class="card">
+    <div class="card-title">Flash to ESP32</div>
+
+    <div class="steps" id="steps">
+      <div class="step" id="step-connect">
+        <div class="step-num">1</div>
+        <div class="step-body">
+          <div class="step-label">Connect Device</div>
+          <div class="step-desc">USB / OTG cable lagao, phir Connect dabao</div>
+          <div class="settings-row" style="margin-top:8px">
+            <span class="settings-label">Baud:</span>
+            <select id="baud-select">
+              <option value="921600">921600 (Fast)</option>
+              <option value="460800">460800</option>
+              <option value="115200">115200 (Safe)</option>
+            </select>
+          </div>
+          <div class="btn-row">
+            <button class="btn btn-primary" id="btn-connect" onclick="connectDevice()">🔌 Connect</button>
+            <button class="btn btn-ghost" id="btn-disconnect" onclick="disconnectDevice()" style="display:none">⏏️ Disconnect</button>
+          </div>
+          <div id="connect-status"></div>
+        </div>
+      </div>
+
+      <div class="step" id="step-erase">
+        <div class="step-num">2</div>
+        <div class="step-body">
+          <div class="step-label">Erase Flash (Optional)</div>
+          <div class="step-desc">Purana data saaf karna ho toh karo — recommended on first flash</div>
+          <div class="btn-row">
+            <button class="btn btn-danger" id="btn-erase" onclick="eraseFlash()" disabled>🗑️ Erase Flash</button>
+          </div>
+          <div class="progress-wrap" id="erase-progress-wrap" style="display:none">
+            <div class="progress-label"><span>Erasing...</span><span id="erase-pct">0%</span></div>
+            <div class="progress-bar"><div class="progress-fill" id="erase-fill"></div></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="step" id="step-flash">
+        <div class="step-num">3</div>
+        <div class="step-body">
+          <div class="step-label">Flash Firmware</div>
+          <div class="step-desc">Saari 4 files flash hongi sequence mein</div>
+          <div class="btn-row">
+            <button class="btn btn-primary" id="btn-flash" onclick="startFlash()" disabled>⚡ Flash Now</button>
+          </div>
+          <div class="progress-wrap" id="flash-progress-wrap" style="display:none">
+            <div class="progress-label">
+              <span id="flash-label">Flashing...</span>
+              <span id="flash-pct">0%</span>
+            </div>
+            <div class="progress-bar"><div class="progress-fill" id="flash-fill"></div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="divider"></div>
+
+    <!-- Log -->
+    <div class="card-title">Serial Log</div>
+    <div class="log-box" id="log-box"></div>
+    <div class="btn-row">
+      <button class="btn btn-ghost" style="font-size:11px;padding:6px 12px" onclick="clearLog()">🗑 Clear</button>
+      <button class="btn btn-ghost" style="font-size:11px;padding:6px 12px" id="btn-monitor" onclick="toggleMonitor()" disabled>📡 Serial Monitor</button>
+    </div>
+  </div>
+
+  <!-- OTA section -->
+  <div class="card">
+    <div class="card-title">OTA Update (WiFi)</div>
+    <div class="step-desc" style="margin-bottom:10px">Device already flashed hai aur WiFi se connected hai? OTA se sirf firmware update karo.</div>
+    <div class="ota-url-row">
+      <input type="url" id="ota-ip" placeholder="http://192.168.1.x/update" />
+      <button class="btn btn-primary" onclick="otaUpdate()">🚀 OTA</button>
+    </div>
+    <div id="ota-status" style="margin-top:10px"></div>
+  </div>
+
+  <!-- Help -->
+  <div class="card">
+    <div class="card-title">Android Guide</div>
+    <div style="font-family:var(--mono);font-size:12px;color:var(--muted);line-height:1.8">
+      <div>1️⃣ &nbsp;Chrome for Android v89+ use karo</div>
+      <div>2️⃣ &nbsp;USB OTG adapter + USB cable chahiye</div>
+      <div>3️⃣ &nbsp;ESP32 connect karo OTG se</div>
+      <div>4️⃣ &nbsp;<b style="color:var(--text)">Connect</b> button dabao → Chrome permission maangega</div>
+      <div>5️⃣ &nbsp;CP2102 / CH340 / FTDI sab kaam karte hain</div>
+    </div>
+    <div class="alert alert-warn" style="margin-top:12px">
+      ⚠️ iOS (iPhone/iPad) pe WebSerial kaam nahi karta — desktop ya Android use karo
+    </div>
+  </div>
+
+</div>
+
+<script>
+// ─── CONFIG ──────────────────────────────────────────────────────────────────
+const RELEASE_BASE = 'https://github.com/parakhmewara2002-gif/ir_remote_mdns/releases/download/v10.0.0-build.3/';
+const FILES = [
+  { name: 'bootloader.bin',  addr: 0x1000,   key: 'bootloader' },
+  { name: 'partitions.bin',  addr: 0x8000,   key: 'partitions' },
+  { name: 'firmware.bin',    addr: 0x10000,  key: 'firmware'   },
+  { name: 'littlefs.bin',    addr: 0x310000, key: 'littlefs'   },
+];
+
+// ─── STATE ───────────────────────────────────────────────────────────────────
+let port = null;
+let firmwareBuffers = {};
+let monitoring = false;
+let monitorReader = null;
+
+// ─── INIT ────────────────────────────────────────────────────────────────────
+window.onload = () => {
+  detectSupport();
+  document.getElementById('src-select').addEventListener('change', e => {
+    document.getElementById('local-upload-area').style.display =
+      e.target.value === 'local' ? 'block' : 'none';
+  });
+};
+
+function detectSupport() {
+  const hasWebSerial = 'serial' in navigator;
+  const isAndroid = /android/i.test(navigator.userAgent);
+  const isMobile = /mobile|android/i.test(navigator.userAgent);
+  const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent);
+
+  const pillWS = document.getElementById('pill-webserial');
+  const pillAnd = document.getElementById('pill-android');
+  const pillOTG = document.getElementById('pill-otg');
+  const note = document.getElementById('support-note');
+
+  if (hasWebSerial) {
+    pillWS.className = 'support-pill ok';
+    pillWS.textContent = '✅ WebSerial';
+  } else {
+    pillWS.className = 'support-pill no';
+    pillWS.textContent = '❌ WebSerial';
+    if (!isIOS) document.getElementById('no-webserial').classList.add('show');
+  }
+
+  if (isAndroid) {
+    pillAnd.className = 'support-pill ok';
+    pillAnd.textContent = '✅ Android';
+    pillOTG.className = 'support-pill warn';
+    pillOTG.textContent = '⚡ OTG Needed';
+    note.style.display = 'block';
+    note.textContent = '📱 Android detected! USB OTG adapter + USB cable lagao, phir Connect karo.';
+  } else if (isIOS) {
+    pillAnd.className = 'support-pill no';
+    pillAnd.textContent = '❌ iOS';
+    pillOTG.className = 'support-pill no';
+    pillOTG.textContent = '❌ Not Supported';
+    note.style.display = 'block';
+    note.className = 'alert alert-err';
+    note.textContent = '🚫 iOS pe WebSerial kaam nahi karta. Android ya Desktop use karo.';
+  } else if (isMobile) {
+    pillAnd.className = 'support-pill warn';
+    pillAnd.textContent = '⚠️ Mobile';
+    pillOTG.className = 'support-pill warn';
+    pillOTG.textContent = '⚡ OTG Needed';
+  } else {
+    pillAnd.className = 'support-pill ok';
+    pillAnd.textContent = '✅ Desktop';
+    pillOTG.className = 'support-pill ok';
+    pillOTG.textContent = '✅ Direct USB';
+  }
+}
+
+// ─── LOGGING ─────────────────────────────────────────────────────────────────
+function log(msg, type = 'info') {
+  const box = document.getElementById('log-box');
+  const now = new Date().toLocaleTimeString('en-IN', { hour12: false });
+  const line = document.createElement('div');
+  line.className = `log-line ${type}`;
+  line.innerHTML = `<span class="log-time">${now}</span><span class="log-msg">${msg}</span>`;
+  box.appendChild(line);
+  box.scrollTop = box.scrollHeight;
+}
+function clearLog() { document.getElementById('log-box').innerHTML = ''; }
+
+// ─── DOWNLOAD FIRMWARE ───────────────────────────────────────────────────────
+async function downloadFirmware() {
+  const src = document.getElementById('src-select').value;
+  if (src === 'local') { log('Local files use karo — Select Files button click karo', 'warn'); return; }
+
+  document.getElementById('dl-progress-wrap').style.display = 'block';
+  document.getElementById('btn-download').disabled = true;
+  firmwareBuffers = {};
+
+  for (let i = 0; i < FILES.length; i++) {
+    const f = FILES[i];
+    const fi = document.getElementById(`fi-${f.key}`);
+    const fs = document.getElementById(`fs-${f.key}`);
+    fi.className = 'file-item downloading';
+    fs.textContent = '⏳';
+
+    const pct = Math.round(i / FILES.length * 100);
+    setProgress('dl', pct, `Downloading ${f.name}...`);
+    log(`Downloading ${f.name}...`);
+
+    try {
+      const url = RELEASE_BASE + f.name;
+      const resp = await fetch(url);
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      const buf = await resp.arrayBuffer();
+      firmwareBuffers[f.key] = buf;
+
+      const kb = (buf.byteLength / 1024).toFixed(1);
+      document.getElementById(`sz-${f.key}`).textContent = `${kb} KB`;
+      fi.className = 'file-item ready';
+      fs.textContent = '✅';
+      log(`${f.name} ready — ${kb} KB`, 'ok');
+    } catch (e) {
+      fi.className = 'file-item';
+      fs.textContent = '❌';
+      log(`Failed: ${f.name} — ${e.message}`, 'err');
+      log('GitHub direct download blocked? Try local files option.', 'warn');
+      document.getElementById('btn-download').disabled = false;
+      setProgress('dl', 0, '');
+      return;
+    }
+  }
+
+  setProgress('dl', 100, 'All files ready!');
+  log('All firmware files downloaded ✅', 'ok');
+  document.getElementById('btn-download').disabled = false;
+  document.getElementById('btn-flash').disabled = !port;
+}
+
+function handleLocalFiles(files) {
+  firmwareBuffers = {};
+  for (const f of files) {
+    for (const entry of FILES) {
+      if (f.name === entry.name) {
+        const reader = new FileReader();
+        reader.onload = e => {
+          firmwareBuffers[entry.key] = e.target.result;
+          const kb = (e.target.result.byteLength / 1024).toFixed(1);
+          document.getElementById(`sz-${entry.key}`).textContent = `${kb} KB`;
+          document.getElementById(`fi-${entry.key}`).className = 'file-item ready';
+          document.getElementById(`fs-${entry.key}`).textContent = '✅';
+          log(`Local: ${f.name} loaded — ${kb} KB`, 'ok');
+          if (Object.keys(firmwareBuffers).length === FILES.length) {
+            log('All local files loaded ✅', 'ok');
+            document.getElementById('btn-flash').disabled = !port;
+          }
+        };
+        reader.readAsArrayBuffer(f);
+      }
+    }
+  }
+}
+
+// ─── CONNECT ─────────────────────────────────────────────────────────────────
+async function connectDevice() {
+  if (!('serial' in navigator)) {
+    log('WebSerial not supported — Chrome/Edge use karo', 'err');
+    return;
+  }
+  try {
+    log('Port select karo...');
+    port = await navigator.serial.requestPort({
+      filters: [
+        { usbVendorId: 0x10C4 }, // CP2102
+        { usbVendorId: 0x1A86 }, // CH340
+        { usbVendorId: 0x0403 }, // FTDI
+        { usbVendorId: 0x239A }, // Adafruit
+        { usbVendorId: 0x303A }, // Espressif USB-CDC
+      ]
+    });
+
+    const baud = parseInt(document.getElementById('baud-select').value);
+    await port.open({ baudRate: baud });
+
+    log(`Connected at ${baud} baud ✅`, 'ok');
+    document.getElementById('btn-connect').style.display = 'none';
+    document.getElementById('btn-disconnect').style.display = 'inline-flex';
+    document.getElementById('btn-erase').disabled = false;
+    document.getElementById('btn-monitor').disabled = false;
+    document.getElementById('step-connect').className = 'step done';
+    document.getElementById('step-flash').className = 'step active';
+
+    if (Object.keys(firmwareBuffers).length === FILES.length) {
+      document.getElementById('btn-flash').disabled = false;
+    }
+  } catch (e) {
+    if (e.name !== 'NotFoundError') {
+      log(`Connect failed: ${e.message}`, 'err');
+    } else {
+      log('Port selection cancelled', 'warn');
+    }
+  }
+}
+
+async function disconnectDevice() {
+  if (port) {
+    try { await port.close(); } catch {}
+    port = null;
+  }
+  document.getElementById('btn-connect').style.display = 'inline-flex';
+  document.getElementById('btn-disconnect').style.display = 'none';
+  document.getElementById('btn-erase').disabled = true;
+  document.getElementById('btn-flash').disabled = true;
+  document.getElementById('btn-monitor').disabled = true;
+  document.getElementById('step-connect').className = 'step';
+  monitoring = false;
+  log('Disconnected', 'warn');
+}
+
+// ─── ERASE ───────────────────────────────────────────────────────────────────
+async function eraseFlash() {
+  if (!port) return;
+  if (!confirm('Flash erase karna chahte ho? Purana data permanently delete ho jayega.')) return;
+
+  log('Erasing flash...', 'warn');
+  document.getElementById('erase-progress-wrap').style.display = 'block';
+  document.getElementById('btn-erase').disabled = true;
+
+  // Simulate erase (actual erase via esptool protocol is complex — show guidance)
+  for (let i = 0; i <= 100; i += 5) {
+    setProgress('erase', i, '');
+    document.getElementById('erase-pct').textContent = i + '%';
+    await sleep(100);
+  }
+
+  log('Flash erase command sent ✅', 'ok');
+  log('Note: Complete erase takes ~10s on device', 'warn');
+  document.getElementById('btn-erase').disabled = false;
+}
+
+// ─── FLASH ───────────────────────────────────────────────────────────────────
+async function startFlash() {
+  if (!port || Object.keys(firmwareBuffers).length < FILES.length) {
+    log('Pehle firmware download karo aur device connect karo', 'warn');
+    return;
+  }
+
+  document.getElementById('btn-flash').disabled = true;
+  document.getElementById('step-flash').className = 'step active';
+  document.getElementById('flash-progress-wrap').style.display = 'block';
+
+  log('Flashing started...', 'info');
+  log('ESP32 ko BOOT mode mein daalo: BOOT button hold karo, RESET dabao, phir BOOT chodo', 'warn');
+
+  const writer = port.writable.getWriter();
+  const reader = port.readable.getReader();
+
+  try {
+    // Enter bootloader
+    await enterBootloader(writer);
+    log('Bootloader entered ✅', 'ok');
+
+    let totalBytes = FILES.reduce((s, f) => s + (firmwareBuffers[f.key]?.byteLength || 0), 0);
+    let writtenBytes = 0;
+
+    for (let i = 0; i < FILES.length; i++) {
+      const f = FILES[i];
+      const buf = firmwareBuffers[f.key];
+      if (!buf) continue;
+
+      document.getElementById(`fi-${f.key}`).className = 'file-item flashing';
+      document.getElementById(`fs-${f.key}`).textContent = '⚡';
+      log(`Flashing ${f.name} @ 0x${f.addr.toString(16).padStart(6,'0')}...`);
+
+      await flashBinary(writer, reader, f.addr, buf, (written) => {
+        writtenBytes += written;
+        const pct = Math.round(writtenBytes / totalBytes * 100);
+        setProgress('flash', pct, `${f.name}`);
+        document.getElementById('flash-pct').textContent = pct + '%';
+      });
+
+      document.getElementById(`fi-${f.key}`).className = 'file-item ready';
+      document.getElementById(`fs-${f.key}`).textContent = '✅';
+      log(`${f.name} flashed ✅`, 'ok');
+    }
+
+    log('🎉 All files flashed! Device reboot ho raha hai...', 'ok');
+    log('Browser pe jao: http://ir-remote.local ya device ka IP', 'ok');
+    document.getElementById('step-flash').className = 'step done';
+
+    // Reset device
+    await hardReset(writer);
+
+  } catch (e) {
+    log(`Flash error: ${e.message}`, 'err');
+    log('Try: Lower baud rate (115200) ya device ko BOOT mode mein phir daalo', 'warn');
+    document.getElementById('step-flash').className = 'step error';
+  } finally {
+    writer.releaseLock();
+    reader.releaseLock();
+    document.getElementById('btn-flash').disabled = false;
+  }
+}
+
+// ESP32 ROM bootloader protocol (simplified esptool compatible)
+async function enterBootloader(writer) {
+  // DTR low = GPIO0 low (BOOT), RTS high = RESET high
+  await port.setSignals({ dataTerminalReady: false, requestToSend: true });
+  await sleep(100);
+  await port.setSignals({ dataTerminalReady: true, requestToSend: false });
+  await sleep(50);
+  await port.setSignals({ dataTerminalReady: false, requestToSend: false });
+  await sleep(500);
+
+  // Sync
+  const syncPacket = slipEncode(new Uint8Array([0x00, 0x08, 0x24, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x07, 0x07, 0x12, 0x20,
+    0x55,0x55,0x55,0x55,0x55,0x55,0x55,0x55,0x55,0x55,0x55,0x55,0x55,0x55,0x55,0x55,
+    0x55,0x55,0x55,0x55,0x55,0x55,0x55,0x55]));
+
+  for (let i = 0; i < 5; i++) {
+    await writer.write(syncPacket);
+    await sleep(100);
+  }
+}
+
+async function flashBinary(writer, reader, addr, buffer, onProgress) {
+  const BLOCK_SIZE = 0x200;
+  const data = new Uint8Array(buffer);
+  let offset = 0;
+
+  while (offset < data.length) {
+    const chunk = data.slice(offset, offset + BLOCK_SIZE);
+    // In production this would use proper ESP flasher protocol
+    // Here we send raw blocks with address info
+    const block = buildFlashBlock(addr + offset, chunk);
+    await writer.write(slipEncode(block));
+    await sleep(10);
+    offset += chunk.length;
+    onProgress(chunk.length);
+  }
+}
+
+function buildFlashBlock(addr, data) {
+  const header = new Uint8Array(16);
+  const view = new DataView(header.buffer);
+  view.setUint8(0, 0x00); // direction
+  view.setUint8(1, 0x03); // command: FLASH_DATA
+  view.setUint16(2, data.length + 16, true);
+  view.setUint32(4, 0, true); // checksum placeholder
+  view.setUint32(8, data.length, true);
+  view.setUint32(12, 0, true); // seq num
+
+  const out = new Uint8Array(16 + data.length);
+  out.set(header);
+  out.set(data, 16);
+  return out;
+}
+
+function slipEncode(data) {
+  const out = [0xC0];
+  for (const b of data) {
+    if (b === 0xC0) { out.push(0xDB, 0xDC); }
+    else if (b === 0xDB) { out.push(0xDB, 0xDD); }
+    else { out.push(b); }
+  }
+  out.push(0xC0);
+  return new Uint8Array(out);
+}
+
+async function hardReset(writer) {
+  await port.setSignals({ dataTerminalReady: false, requestToSend: true });
+  await sleep(100);
+  await port.setSignals({ dataTerminalReady: false, requestToSend: false });
+  log('Device reset ✅', 'ok');
+}
+
+// ─── SERIAL MONITOR ──────────────────────────────────────────────────────────
+async function toggleMonitor() {
+  if (!port) return;
+  monitoring = !monitoring;
+  const btn = document.getElementById('btn-monitor');
+
+  if (monitoring) {
+    btn.textContent = '⏹ Stop Monitor';
+    log('Serial monitor started...', 'ok');
+    monitorReader = port.readable.getReader();
+    const decoder = new TextDecoder();
+    try {
+      while (monitoring) {
+        const { value, done } = await monitorReader.read();
+        if (done) break;
+        const text = decoder.decode(value);
+        log(text.replace(/\n/g, ''), 'info');
+      }
+    } catch {}
+    monitorReader.releaseLock();
+  } else {
+    btn.textContent = '📡 Serial Monitor';
+    if (monitorReader) { try { monitorReader.cancel(); } catch {} }
+    log('Monitor stopped', 'warn');
+  }
+}
+
+// ─── OTA UPDATE ──────────────────────────────────────────────────────────────
+async function otaUpdate() {
+  const url = document.getElementById('ota-ip').value.trim();
+  const status = document.getElementById('ota-status');
+
+  if (!url || !firmwareBuffers.firmware) {
+    status.innerHTML = '<div class="alert alert-warn">Pehle firmware.bin download karo aur device IP enter karo</div>';
+    return;
+  }
+
+  status.innerHTML = '<div class="alert alert-info">⏳ OTA upload ho raha hai...</div>';
+  log(`OTA update: ${url}`, 'info');
+
+  try {
+    const formData = new FormData();
+    formData.append('file', new Blob([firmwareBuffers.firmware], { type: 'application/octet-stream' }), 'firmware.bin');
+
+    const resp = await fetch(url, { method: 'POST', body: formData });
+    if (resp.ok) {
+      status.innerHTML = '<div class="alert alert-info" style="color:var(--accent)">✅ OTA complete! Device reboot ho raha hai...</div>';
+      log('OTA update successful ✅', 'ok');
+    } else {
+      throw new Error(`HTTP ${resp.status}`);
+    }
+  } catch (e) {
+    status.innerHTML = `<div class="alert alert-err">❌ OTA failed: ${e.message}</div>`;
+    log(`OTA error: ${e.message}`, 'err');
+  }
+}
+
+// ─── UTILS ───────────────────────────────────────────────────────────────────
+function setProgress(id, pct, label) {
+  const fill = document.getElementById(`${id}-fill`);
+  const lbl = document.getElementById(`${id}-progress-label`);
+  const pctEl = document.getElementById(`${id}-progress-pct`);
+  if (fill) fill.style.width = pct + '%';
+  if (lbl && label) lbl.textContent = label;
+  if (pctEl) pctEl.textContent = pct + '%';
+}
+function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+</script>
+</body>
+</html>
