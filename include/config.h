@@ -95,9 +95,9 @@
 // ── Web server ───────────────────────────────────────────────
 #define HTTP_PORT             80
 #define WS_PATH               "/ws"
-#define WS_MAX_CLIENTS        4
-#define WS_QUEUE_MAX          64     // max pending WS messages before oldest dropped
-#define HTTP_MAX_BODY         65536
+#define WS_MAX_CLIENTS        2      // was 4 — saves ~10KB WS client buffers
+#define WS_QUEUE_MAX          16     // was 64 — saves ~3KB queue RAM
+#define HTTP_MAX_BODY         16384  // was 65536 — saves ~48KB; IR DB restore uses chunked upload anyway
 
 // ── Filesystem ───────────────────────────────────────────────
 #define DB_FILE               "/ir_database.json"
@@ -106,7 +106,7 @@
 #define CFG_FILE              "/config.json"
 #define GROUPS_FILE           "/groups.json"
 #define SCHEDULES_FILE        "/schedules.json"
-#define MAX_BUTTONS           128     // increased from 64
+#define MAX_BUTTONS           64      // was 128 — each IRButton ~150B; 64 saves ~10KB pre-alloc
 #define MAX_RAW_EDGES         512
 
 // ── Backup & Restore limits ───────────────────────────────────

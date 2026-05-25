@@ -62,9 +62,9 @@ void IRTransmitter::begin(const IrPinConfig& pins) {
         }
         // Pin IR TX task to Core 1 alongside loop() - IR timing is CPU-bound.
         // Priority 5 > loop() priority (1) so IR fires promptly when queued.
-        // Stack 6KB: 8 emitters × doTransmit frame + IRsend overhead is safe.
+        // Stack 4KB: sufficient for single emitter + IRsend + doTransmit frame.
         xTaskCreatePinnedToCore(
-            _txTask, "ir_tx", 6144, this, 5, nullptr, 1
+            _txTask, "ir_tx", 4096, this, 5, nullptr, 1
         );
         Serial.println(DEBUG_TAG " IR TX task started on Core 1 (priority 5, ptr-queue)");
     }

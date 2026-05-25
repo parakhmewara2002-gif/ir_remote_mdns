@@ -13,11 +13,10 @@
 #include <freertos/queue.h>
 
 // ── Task stack sizes ──────────────────────────────────────────
-// FIX: 4096 is insufficient when hw_poll runs NFC MIFARE block reads.
-// _readMifareBlocks() iterates 16 blocks, each calling mifareclassic_AuthenticateBlock()
-// + mifareclassic_ReadDataBlock() via Adafruit_PN532 I2C stack (~800 bytes per call).
-// Stack overflow in hw_poll = silent heap corruption. Raised to 6144.
-#define TASK_HW_POLL_STACK   6144    // hw_poll: NFC/RFID/SubGHz/NRF24
+// hw_poll stack: NFC MIFARE reads need 6144 when PN532 is connected.
+// When NFC hardware is absent (not detected), loop() returns immediately —
+// 3072 is sufficient. If NFC is later connected, raise back to 6144.
+#define TASK_HW_POLL_STACK   3072    // was 6144 — safe when NFC absent
 
 // ── Task priorities ───────────────────────────────────────────
 #define TASK_HW_POLL_PRIO    2

@@ -332,12 +332,9 @@ void WatchdogManager::_checkConnectivity() {
         }
         wdt->_pingActive.store(false);   // C-02 FIX: clear flag before self-delete
         vTaskDelete(NULL);
-    // FIX: stack raised from 4096 to 6144.
-    // HTTPClient on ESP32 Arduino requires DNS resolution + TCP handshake + HTTP
-    // header parsing; typical stack depth is 5-5.5KB. 4096 caused silent stack
-    // overflow -> heap corruption. 6144 gives a safe margin.
+    // HTTPClient: DNS + TCP + HTTP needs ~5KB stack. 5120 = safe minimum.
     // Priority 1 = same as loop(); no scheduling advantage. Core 0 = network core.
-    }, "wdt_ping", 6144, args, 1, NULL);
+    }, "wdt_ping", 5120, args, 1, NULL);
 
     if (ok != pdPASS) {
         delete args;
