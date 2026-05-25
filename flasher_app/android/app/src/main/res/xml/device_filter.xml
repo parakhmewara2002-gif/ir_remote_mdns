@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- CP2102 / CP210x (Silicon Labs) -->
+    <usb-device vendor-id="4292" />
+    <!-- CH340 / CH341 (QinHeng) -->
+    <usb-device vendor-id="6790" />
+    <!-- FTDI -->
+    <usb-device vendor-id="1027" />
+    <!-- Espressif ESP32-S3 Native USB CDC -->
+    <usb-device vendor-id="12346" />
+    <!-- Adafruit -->
+    <usb-device vendor-id="9114" />
+    <!-- All other devices (catch-all) -->
+    <usb-device />
+</resources>
