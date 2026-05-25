@@ -428,6 +428,20 @@ void WebUI::setupApiRoutes() {
     _server.on("/api/restart", HTTP_POST,
         [this](AsyncWebServerRequest* req) { handleRestart(req); });
 
+    // POST /api/wifi/reset — delete saved WiFi config and reboot.
+    // Restores default AP SSID="IR-Remote" password="irremote123".
+    _server.on("/api/wifi/reset", HTTP_POST,
+        [this](AsyncWebServerRequest* req) {
+            if (!authMgr.checkAuth(req)) return;
+            LittleFS.remove(CFG_FILE);
+            sendJson(req, 200, "{\"ok\":true,\"note\":\"WiFi config cleared - rebooting\"}");
+            extern portMUX_TYPE s_restartMux;
+            extern volatile uint32_t s_restartAt;
+            taskENTER_CRITICAL(&s_restartMux);
+            s_restartAt = (uint32_t)(millis() + 500);
+            taskEXIT_CRITICAL(&s_restartMux);
+        });
+
     // Fix 1: auto-save config routes
     _server.on("/api/autosave", HTTP_GET,
         [this](AsyncWebServerRequest* req) { handleGetAutoSave(req); });

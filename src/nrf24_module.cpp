@@ -35,44 +35,47 @@ void Nrf24Module::begin() {
     _moduleEnabled = _cfg.enabled;
     memset(_scanChannels, 0, sizeof(_scanChannels));
 
-    // Create SPI bus
-    if (_spi) { delete _spi; _spi = nullptr; }
+    // Free any previous allocations
     if (_radio) { delete _radio; _radio = nullptr; }
+    if (_spi)   { _spi->end(); delete _spi; _spi = nullptr; }
+    _hwConnected = false;
 
-    _spi = (_cfg.spiBus == 1)
-        ? new SPIClass(HSPI)
-        : new SPIClass(VSPI);
-    // DO NOT pass CSN as SS to SPI.begin - RF24 manages CSN via digitalWrite.
-    // Passing CSN here causes the SPI hardware to also drive it, creating conflicts.
-    _spi->begin(_cfg.sck, _cfg.miso, _cfg.mosi, _cfg.csn);
-    _spi->setFrequency(10000000);  // 10 MHz - NRF24L01 max SPI clock
-
-    // CE and CSN must be OUTPUT before RF24::begin()
+    // Lazy init: allocate SPI + RF24 only if hardware is detected.
+    // Without this, ~15KB RAM is consumed at boot even when NRF24 is absent.
+    // Quick detect: bring up SPI, try RF24::begin, free everything if it fails.
     pinMode(_cfg.ce,  OUTPUT); digitalWrite(_cfg.ce,  LOW);
     pinMode(_cfg.csn, OUTPUT); digitalWrite(_cfg.csn, HIGH);
 
-    _radio = new RF24(_cfg.ce, _cfg.csn);
+    SPIClass* spiProbe = (_cfg.spiBus == 1)
+        ? new SPIClass(HSPI)
+        : new SPIClass(VSPI);
+    spiProbe->begin(_cfg.sck, _cfg.miso, _cfg.mosi, _cfg.csn);
+    spiProbe->setFrequency(10000000);
 
-    bool beginOk = _radio->begin(_spi);
+    RF24* radioProbe = new RF24(_cfg.ce, _cfg.csn);
+    bool beginOk = radioProbe->begin(spiProbe);
+
     Serial.printf(NRF24_TAG " RF24::begin=%s CE=%u CSN=%u SCK=%u MOSI=%u MISO=%u bus=%s\n",
                   beginOk?"OK":"FAIL", _cfg.ce, _cfg.csn,
                   _cfg.sck, _cfg.mosi, _cfg.miso,
                   _cfg.spiBus==1?"HSPI":"VSPI");
 
-    if (beginOk) {
-        _hwConnected = _radio->isChipConnected();
-        Serial.printf(NRF24_TAG " isChipConnected=%s\n",
-                      _hwConnected?"YES":"NO (SPI OK but no NRF24 response)");
-    } else {
-        _hwConnected = false;
-        Serial.println(NRF24_TAG " RF24::begin failed - check CE/CSN/SPI wiring");
-    }
-
-    if (_hwConnected) {
+    if (beginOk && radioProbe->isChipConnected()) {
+        // Hardware found — keep allocations
+        _spi   = spiProbe;
+        _radio = radioProbe;
+        _hwConnected = true;
         _applyConfig();
         Serial.printf(NRF24_TAG " Connected - CE=%u CSN=%u ch=%u\n",
                       _cfg.ce, _cfg.csn, _channel);
     } else {
+        // No hardware — free immediately to reclaim RAM
+        delete radioProbe;
+        spiProbe->end();
+        delete spiProbe;
+        _hwConnected = false;
+        if (!beginOk)
+            Serial.println(NRF24_TAG " RF24::begin failed - check CE/CSN/SPI wiring");
         Serial.println(NRF24_TAG " Not detected - verify: CE/CSN not swapped, 3.3V power, 100uF cap on VCC");
     }
 }

@@ -131,13 +131,17 @@ void SubGhzModule::begin() {
     _loadSignals();
 
     if (_cc1101Spi) { _cc1101Spi->end(); delete _cc1101Spi; _cc1101Spi = nullptr; }
+    _hwConnected = false;
 
-    _cc1101Spi = (_cfg.spiBus == 1)
+    // Lazy init: do a quick SPI probe to check if CC1101 is present.
+    // If not found, free the SPIClass immediately — saves ~8KB RAM at boot.
+    SPIClass* spiProbe = (_cfg.spiBus == 1)
         ? new SPIClass(HSPI)
         : new SPIClass(VSPI);
-    _cc1101Spi->begin(_cfg.sck, _cfg.miso, _cfg.mosi, _cfg.cs);
-    _cc1101Spi->setFrequency(4000000);
-    _cc1101Spi->setDataMode(SPI_MODE0);
+    spiProbe->begin(_cfg.sck, _cfg.miso, _cfg.mosi, _cfg.cs);
+    spiProbe->setFrequency(4000000);
+    spiProbe->setDataMode(SPI_MODE0);
+    _cc1101Spi = spiProbe; // _detectCC1101() uses _cc1101Spi internally
 
     pinMode(_cfg.cs,   OUTPUT); digitalWrite(_cfg.cs,   HIGH);
     pinMode(_cfg.gdo0, INPUT);
@@ -155,6 +159,10 @@ void SubGhzModule::begin() {
                       _cfg.gdo0, _cfg.cs,
                       SubGhzModule::modulationName(_modulation).c_str());
     } else {
+        // No CC1101 found — free SPI to reclaim RAM
+        _cc1101Spi->end();
+        delete _cc1101Spi;
+        _cc1101Spi = nullptr;
         Serial.println(SUBGHZ_TAG " CC1101 not detected");
     }
 }

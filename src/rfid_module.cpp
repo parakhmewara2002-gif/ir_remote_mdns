@@ -69,11 +69,14 @@ void RfidModule::begin() {
     pinMode(_cfg.dataPin, INPUT_PULLUP);
     if (_cfg.clkPin > 0) pinMode(_cfg.clkPin, INPUT_PULLUP);
 
-    // Detect by checking if DATA pin pulses within 500ms
+    // Quick detect: sample DATA pin for 50ms only (was 500ms — caused loop() stall).
+    // RFID modules with a card present toggle DATA within a few ms; 50ms is enough.
+    // If nothing pulses, treat as absent and skip — loop() will still work if a
+    // card is presented later since _hwConnected is re-checked on startRead().
     unsigned long start = millis();
     bool lastLevel = digitalRead(_cfg.dataPin);
     bool detected  = false;
-    while (millis() - start < 500) {
+    while (millis() - start < 50) {
         bool level = digitalRead(_cfg.dataPin);
         if (level != lastLevel) { detected = true; break; }
         lastLevel = level;
