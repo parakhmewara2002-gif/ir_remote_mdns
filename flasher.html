@@ -266,8 +266,9 @@ body.light .wifi-input{background:rgba(0,0,0,.05)}
   <div class="success-box">
     <div class="success-icon">🎉</div>
     <h2 id="success-title">Flash Complete!</h2>
-    <p id="success-msg">Device boot ho raha hai...<br>Browser mein open karo:</p>
-    <a href="http://ir-remote.local" target="_blank" class="btn btn-primary" style="text-decoration:none;display:inline-flex;margin-bottom:12px">🌐 ir-remote.local</a><br>
+    <p id="success-msg">Device boot ho raha hai...<br>Browser mein open karo:<br><small style="font-size:11px;opacity:0.7">If link doesn't work, check your router for device IP</small></p>
+    <a href="http://ir-remote.local" target="_blank" class="btn btn-primary" style="text-decoration:none;display:inline-flex;margin-bottom:8px">🌐 ir-remote.local (mDNS)</a><br>
+    <div style="font-family:var(--mono);font-size:11px;color:var(--muted);margin:6px 0 12px">mDNS works on most networks. If it fails, find device IP in router admin panel (look for 'ir-remote' or 'espressif').</div>
     <button class="btn btn-ghost" onclick="document.getElementById('success-screen').classList.remove('show')" style="margin-top:8px">← Back</button>
   </div>
 </div>
@@ -406,6 +407,10 @@ body.light .wifi-input{background:rgba(0,0,0,.05)}
         <div class="btn-row">
           <button class="btn btn-primary" id="btn-flash" disabled onclick="startFlash()">⚡ <span data-i="btn_flash">Flash Now</span></button>
           <button class="btn btn-backup" id="btn-backup" disabled onclick="backupFirmware()" title="Backup current firmware before flashing">💾 <span data-i="btn_backup">Backup First</span></button>
+        </div>
+        <div id="backup-wrap" style="display:none" class="prog-wrap">
+          <div class="prog-hd"><span id="backup-lbl">Reading firmware...</span><span id="backup-pct">0%</span></div>
+          <div class="prog-track"><div class="prog-fill" id="backup-fill"></div></div>
         </div>
         <div id="flash-wrap" style="display:none" class="prog-wrap">
           <div class="prog-hd"><span id="flash-lbl">Preparing...</span><span id="flash-pct">0%</span></div>
@@ -625,7 +630,7 @@ function installPWA(){
 (function(){
   const manifest={name:'IR Remote Flasher',short_name:'IRFlasher',start_url:'./flasher.html',
     display:'standalone',background_color:'#050508',theme_color:'#00ffb4',
-    icons:[{src:'https://raw.githubusercontent.com/parakhmewara2002-gif/ir_remote_mdns/main/Screenshot_20260525-004652.jpg',sizes:'192x192',type:'image/jpeg'}]};
+    icons:[{src:'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAIAAAD8GO2jAAAAOElEQVR4nGNg+L+FtgiIWVk5aIRGLRi1gLYWkJreRy0YtWDUglELRi0YnhZQBY1aMGoB1SygKQIABpezG1pSrzUAAAAASUVORK5CYII=',sizes:'32x32',type:'image/png'}]};
   const blob=new Blob([JSON.stringify(manifest)],{type:'application/json'});
   document.getElementById('pwa-manifest').href=URL.createObjectURL(blob);
 })();
@@ -652,12 +657,15 @@ function setStep(n,isError){
 }
 
 /* ── TOAST ── */
+function sanitize(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
 function toast(msg,type='ok',dur=3500){
   const c=document.getElementById('toast-container');
   const el=document.createElement('div');
   el.className='toast '+type;
   const ico=type==='ok'?'✅':type==='warn'?'⚠️':'❌';
-  el.innerHTML='<span>'+ico+'</span><span>'+msg+'</span>';
+  const icoSpan=document.createElement('span');icoSpan.textContent=ico;
+  const msgSpan=document.createElement('span');msgSpan.textContent=msg;
+  el.appendChild(icoSpan);el.appendChild(msgSpan);
   c.appendChild(el);
   setTimeout(()=>{el.classList.add('out');setTimeout(()=>el.remove(),300);},dur);
 }
@@ -717,7 +725,9 @@ function log(msg,type='info'){
   const t_=new Date().toLocaleTimeString('en-IN',{hour12:false});
   const d=document.createElement('div');
   d.className='ll '+type;
-  d.innerHTML='<span class="lt">'+t_+'</span><span class="lm">'+msg+'</span>';
+  const ts=document.createElement('span');ts.className='lt';ts.textContent=t_;
+  const lm=document.createElement('span');lm.className='lm';lm.textContent=msg;
+  d.appendChild(ts);d.appendChild(lm);
   box.appendChild(d);
   requestAnimationFrame(()=>{box.scrollTop=box.scrollHeight;});
 }
@@ -745,17 +755,21 @@ async function downloadAll(){
         'https://corsproxy.io/?'+encodeURIComponent(RELEASE+f.name),
         'https://api.allorigins.win/raw?url='+encodeURIComponent(RELEASE+f.name),
       ];
-      let buf=null;
-      for(const url of urls){
-        try{const r=await fetch(url);if(r.ok){buf=await r.arrayBuffer();break;}}catch{}
+      let buf=null;let usedProxy=false;
+      for(let ui=0;ui<urls.length;ui++){
+        try{const r=await fetch(urls[ui]);if(r.ok){buf=await r.arrayBuffer();usedProxy=(ui>0);break;}}catch{}
       }
       if(!buf)throw new Error('All download attempts failed');
+      // Compute SHA-256 and display for integrity verification
+      const hashBuf=await crypto.subtle.digest('SHA-256',buf);
+      const hashHex=Array.from(new Uint8Array(hashBuf)).map(b=>b.toString(16).padStart(2,'0')).join('');
       bufs[f.key]=buf;
       const kb=(buf.byteLength/1024).toFixed(1);
       document.getElementById('sz-'+f.key).textContent=kb+' KB';
       document.getElementById('fi-'+f.key).className='fc ready';
       document.getElementById('fs-'+f.key).textContent='✅';
-      log(f.name+' ready — '+kb+' KB','ok');
+      log(f.name+' ready — '+kb+' KB | SHA256: '+hashHex.slice(0,16)+'...','ok');
+      if(usedProxy){toast('⚠️ '+f.name+' downloaded via CORS proxy — verify SHA-256 in log','warn',5000);}
     }catch(e){
       document.getElementById('fi-'+f.key).className='fc';
       document.getElementById('fs-'+f.key).textContent='❌';
@@ -785,7 +799,8 @@ function loadLocalFiles(files){
       document.getElementById('fi-'+entry.key).className='fc ready';
       document.getElementById('fs-'+entry.key).textContent='✅';
       log('Loaded: '+file.name+' — '+kb+' KB','ok');
-      if(++loaded===FILES.length){
+      loaded++;
+      if(Object.keys(bufs).length===FILES.length){
         log('Sab local files load ho gayi ✅','ok');
         if(port){document.getElementById('btn-flash').disabled=false;setStep(3);}
       }
@@ -836,6 +851,7 @@ async function connectDevice(){
 }
 
 async function disconnectDevice(){
+  if(flashing){toast('Flash in progress, please wait...','err');return;}
   monitoring=false;
   if(monReader){try{await monReader.cancel();}catch{}}
   if(port){try{await port.close();}catch{};port=null;}
@@ -869,133 +885,159 @@ async function backupFirmware(){
   if(flashing){toast(t('err_flashing'),'warn');return;}
   log('Backup shuru — firmware.bin read ho raha hai...','warn');
   toast('Backup chal rahi hai...','warn',8000);
+  document.getElementById('backup-wrap').style.display='block';
+  document.getElementById('btn-backup').disabled=true;
+  // enterBootloader returns a fresh writer after SYNC
+  let writer=await enterBootloader(null);
   try{
-    // Read 1MB from 0x10000 (firmware partition) via flash_read
-    const writer=port.writable.getWriter();
-    await enterBootloader(writer);
     // flash_read cmd: addr, size, block_size, max_blocks
     const rd=new Uint8Array(16);const dv=new DataView(rd.buffer);
     dv.setUint32(0,0x10000,true);dv.setUint32(4,0x100000,true);
     dv.setUint32(8,0x200,true);dv.setUint32(12,0x800,true);
     await writer.write(slipEncode(buildCmd(0x0e,rd)));
+  }finally{
     writer.releaseLock();
-    // Collect response bytes
-    const reader=port.readable.getReader();
-    const chunks=[];let total=0;
-    const timeout=setTimeout(()=>reader.cancel(),15000);
-    try{
-      while(total<0x100000){
-        const {value,done}=await reader.read();
-        if(done)break;
-        chunks.push(value);total+=value.length;
-        setProg('flash',Math.round(total/0x100000*100),'Reading firmware...');
-        await yieldFrame();
-      }
-    }catch{}
-    clearTimeout(timeout);
-    reader.releaseLock();
-    const blob=new Blob(chunks,{type:'application/octet-stream'});
-    const url=URL.createObjectURL(blob);
-    const a=document.createElement('a');
-    a.href=url;a.download='firmware_backup_'+Date.now()+'.bin';
-    a.click();URL.revokeObjectURL(url);
-    log('Backup saved ✅','ok');toast(t('toast_backup_done'),'ok');
-  }catch(e){
-    log('Backup error: '+e.message,'err');
-    toast('Backup failed: '+e.message,'err');
   }
+  // Collect response bytes and SLIP-decode them
+  const reader=port.readable.getReader();
+  const rawBytes=[];let total=0;
+  const timeout=setTimeout(()=>reader.cancel(),15000);
+  try{
+    while(total<0x100000){
+      const {value,done}=await reader.read();
+      if(done)break;
+      for(const b of value)rawBytes.push(b);
+      total+=value.length;
+      setProg('backup',Math.round(total/0x100000*100),'Reading firmware...');
+      await yieldFrame();
+    }
+  }catch{}
+  clearTimeout(timeout);
+  try{reader.releaseLock();}catch{}
+  // SLIP decode: strip 0xC0 frame bytes, unescape 0xDB 0xDC->0xC0, 0xDB 0xDD->0xDB
+  const decoded=[];let i=0;
+  while(i<rawBytes.length){
+    const b=rawBytes[i++];
+    if(b===0xC0)continue; // frame delimiter
+    if(b===0xDB){
+      if(i<rawBytes.length){
+        const nb=rawBytes[i++];
+        if(nb===0xDC)decoded.push(0xC0);
+        else if(nb===0xDD)decoded.push(0xDB);
+        else decoded.push(b,nb);
+      }
+    }else{decoded.push(b);}
+  }
+  document.getElementById('backup-wrap').style.display='none';
+  document.getElementById('btn-backup').disabled=false;
+  if(decoded.length<10){
+    log('Backup error: no data received — device must be in bootloader mode','err');
+    toast('Backup failed: no data','err');return;
+  }
+  const blob=new Blob([new Uint8Array(decoded)],{type:'application/octet-stream'});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');
+  a.href=url;a.download='firmware_backup_'+Date.now()+'.bin';
+  a.click();URL.revokeObjectURL(url);
+  log('Backup saved ✅ ('+decoded.length+' bytes)','ok');toast(t('toast_backup_done'),'ok');
 }
 
 /* ── CHIP INFO ── */
 async function readChipInfo(){
   if(!port)return;
   log('Reading chip info...','info');
+  let writer;
   try{
-    const writer=port.writable.getWriter();
-    await enterBootloader(writer);
-    // READ_REG for MAC, flash size, chip rev
-    async function readReg(addr){
-      const d=new Uint8Array(4);new DataView(d.buffer).setUint32(0,addr,true);
-      await writer.write(slipEncode(buildCmd(0x0a,d)));
-      await sleep(80);return 0; // real impl needs response parsing
-    }
-    await readReg(0x3FF00050); // CHIP_ID
-    writer.releaseLock();
-    // Populate with info from chip detection (simplified — real values need SLIP response parsing)
-    const info=port.getInfo();
-    document.getElementById('ci-mac').textContent='Read via Monitor (ATCMD)';
-    document.getElementById('ci-flash').textContent='4MB (detected)';
-    document.getElementById('ci-rev').textContent='ESP32 Rev 1+';
-    document.getElementById('ci-crystal').textContent='40 MHz';
-    document.getElementById('ci-features').textContent='WiFi · BT · BLE';
-    if(info.usbVendorId){
-      const vendors={0x10C4:'Silicon Labs CP210x',0x1A86:'QinHeng CH340',0x0403:'FTDI',0x303A:'Espressif USB-CDC'};
-      const v=vendors[info.usbVendorId]||'0x'+info.usbVendorId.toString(16);
-      document.getElementById('ci-features').textContent='WiFi · BT · BLE | USB: '+v;
-    }
-    log('Chip info read ✅','ok');toast(t('toast_chip_read'),'ok');
-  }catch(e){log('Chip read error: '+e.message,'err');}
+    writer=await enterBootloader(null);
+    // READ_REG requires SLIP response parsing for real values
+    const d=new Uint8Array(4);new DataView(d.buffer).setUint32(0,0x3FF00050,true);
+    await writer.write(slipEncode(buildCmd(0x0a,d)));
+    await sleep(80);
+  }catch(e){log('Chip read error: '+e.message,'err');return;}
+  finally{if(writer)try{writer.releaseLock();}catch{}}
+  // NOTE: Real chip values require full SLIP response parsing.
+  // Connect and run Health Check for real data.
+  const info=port.getInfo();
+  document.getElementById('ci-mac').textContent='Connect and run Health Check for real data';
+  document.getElementById('ci-flash').textContent='Unknown — requires SLIP response parsing';
+  document.getElementById('ci-rev').textContent='Unknown — requires SLIP response parsing';
+  document.getElementById('ci-crystal').textContent='Unknown — requires SLIP response parsing';
+  document.getElementById('ci-features').textContent='WiFi · BT · BLE (typical ESP32)';
+  if(info.usbVendorId){
+    const vendors={0x10C4:'Silicon Labs CP210x',0x1A86:'QinHeng CH340',0x0403:'FTDI',0x303A:'Espressif USB-CDC'};
+    const v=vendors[info.usbVendorId]||'0x'+info.usbVendorId.toString(16);
+    document.getElementById('ci-features').textContent='USB Adapter: '+v+' (chip data requires SLIP parsing)';
+  }
+  log('Chip info: Connect and run Health Check for real data','warn');
+  toast(t('toast_chip_read'),'ok');
 }
 
 async function healthCheck(){
   if(!port)return;
   log('Health check...','info');
-  const start=performance.now();
+  let writer;
   try{
-    const writer=port.writable.getWriter();
-    // Send sync packet
+    writer=await enterBootloader(null);
+    // Send an additional sync packet for health verification
     const sd=new Uint8Array(36);
     sd[0]=0x07;sd[1]=0x07;sd[2]=0x12;sd[3]=0x20;sd.fill(0x55,4);
     await writer.write(slipEncode(buildCmd(0x08,sd)));
-    writer.releaseLock();
     await sleep(200);
-    const rtt=Math.round(performance.now()-start);
-    log('Health OK — RTT: '+rtt+'ms','ok');
+    // RTT not meaningful without real response parsing — omit misleading value
+    log('Health check: SYNC OK. RTT: N/A (requires response parsing)','ok');
     updateHealth();
   }catch(e){log('Health check error: '+e.message,'err');}
+  finally{if(writer)try{writer.releaseLock();}catch{}}
 }
 
 /* ── PARTITION READER ── */
 async function readPartitions(){
   if(!port)return;
-  log('Reading partition table...','info');
-  try{
-    // Known partitions for this firmware (from partitions_custom.csv)
-    const parts=[
-      {name:'nvs',     type:'data',subtype:'nvs',    offset:'0x009000',size:'0x005000'},
-      {name:'otadata', type:'data',subtype:'ota',    offset:'0x00E000',size:'0x002000'},
-      {name:'app0',    type:'app', subtype:'ota_0',  offset:'0x010000',size:'0x1A0000'},
-      {name:'app1',    type:'app', subtype:'ota_1',  offset:'0x1B0000',size:'0x1A0000'},
-      {name:'spiffs',  type:'data',subtype:'spiffs', offset:'0x310000',size:'0x0B0000'},
-      {name:'coredump',type:'data',subtype:'coredump',offset:'0x3C0000',size:'0x040000'},
-    ];
-    const tbody=document.getElementById('pt-body');
-    tbody.innerHTML='';
-    parts.forEach(p=>{
-      const tr=document.createElement('tr');
-      tr.innerHTML='<td>'+p.name+'</td><td>'+p.type+'</td><td style="color:var(--accent3)">'+p.offset+'</td><td>'+p.size+'</td>';
-      tbody.appendChild(tr);
+  log('Partition read requires bootloader mode — showing expected default layout','warn');
+  // NOTE: True partition table read requires esptool or full SLIP flash_read at 0x8000.
+  // The table below is the expected default layout for this firmware (from partitions_custom.csv).
+  // For full partition dump use: esptool.py read_flash 0x8000 0xC00 partitions.bin
+  const parts=[
+    {name:'nvs',     type:'data',subtype:'nvs',    offset:'0x009000',size:'0x005000'},
+    {name:'otadata', type:'data',subtype:'ota',    offset:'0x00E000',size:'0x002000'},
+    {name:'app0',    type:'app', subtype:'ota_0',  offset:'0x010000',size:'0x1A0000'},
+    {name:'app1',    type:'app', subtype:'ota_1',  offset:'0x1B0000',size:'0x1A0000'},
+    {name:'spiffs',  type:'data',subtype:'spiffs', offset:'0x310000',size:'0x0B0000'},
+    {name:'coredump',type:'data',subtype:'coredump',offset:'0x3C0000',size:'0x040000'},
+  ];
+  const tbody=document.getElementById('pt-body');
+  tbody.innerHTML='';
+  parts.forEach(p=>{
+    const tr=document.createElement('tr');
+    // Use textContent to avoid XSS
+    ['name','type','offset','size'].forEach((k,idx)=>{
+      const td=document.createElement('td');
+      td.textContent=p[k==='offset'?'offset':k==='size'?'size':k];
+      if(idx===2)td.style.color='var(--accent3)';
+      tr.appendChild(td);
     });
-    document.getElementById('pt-empty').style.display='none';
-    document.getElementById('pt-table').style.display='table';
-    log('Partition table loaded ✅','ok');
-  }catch(e){log('Partition read error: '+e.message,'err');}
+    tbody.appendChild(tr);
+  });
+  document.getElementById('pt-empty').textContent='⚠️ Note: Partition read requires bootloader mode — use esptool for full partition dump. Showing expected default layout:';
+  document.getElementById('pt-empty').style.display='block';
+  document.getElementById('pt-table').style.display='table';
+  log('Partition table: default layout shown (esptool needed for real read)','warn');
 }
 
 /* ── WIFI PROVISIONING ── */
 async function sendWifi(){
   if(!port){toast(t('err_no_port'),'err');return;}
   const ssid=document.getElementById('wifi-ssid').value.trim();
-  const pass=document.getElementById('wifi-pass').value;
-  if(!ssid){toast('SSID enter karo','warn');return;}
+  const pass=document.getElementById('wifi-pass').value.trim();
+  if(!ssid){toast('SSID enter karo — field empty hai','warn');return;}
+  const writer=port.writable.getWriter();
   try{
-    const writer=port.writable.getWriter();
     const cmd='wifi:'+ssid+':'+pass+'\n';
     await writer.write(new TextEncoder().encode(cmd));
-    writer.releaseLock();
     log('WiFi config sent: '+ssid,'ok');
     toast(t('toast_wifi_sent'),'ok');
   }catch(e){log('WiFi send error: '+e.message,'err');toast('WiFi send failed','err');}
+  finally{try{writer.releaseLock();}catch{}}
 }
 
 /* ── ERASE ── */
@@ -1006,15 +1048,23 @@ async function eraseFlash(){
   setStep(3);
   log('Flash erase shuru...','warn');
   try{
-    const writer=port.writable.getWriter();
-    await enterBootloader(writer);
-    await writer.write(slipEncode(buildCmd(0x30,new Uint8Array(0))));
-    writer.releaseLock();
+    let writer=await enterBootloader(null);
+    try{
+      // Opcode 0x04 = FLASH_ERASE_CHIP (correct ESP32 ROM opcode; 0x30 was wrong)
+      await writer.write(slipEncode(buildCmd(0x04,new Uint8Array(0))));
+      // Validate response
+      writer.releaseLock();
+      await readResponse(30000); // erase can take up to 30s
+      log('Erase response OK ✅','ok');
+    }finally{try{writer.releaseLock();}catch{}}
     await animateProg('erase',10000);
     log('Flash erase complete ✅','ok');
     toast('Flash erased ✅','ok');
-  }catch(e){log('Erase error: '+e.message,'err');}
-  document.getElementById('btn-erase').disabled=false;
+  }catch(e){
+    log('Erase error: '+e.message,'err');
+  }finally{
+    document.getElementById('btn-erase').disabled=false;
+  }
 }
 
 function animateProg(id,durationMs){
@@ -1037,6 +1087,18 @@ async function startFlash(){
   if(!port){toast(t('err_no_port'),'err');return;}
   if(Object.keys(bufs).length<FILES.length){toast(t('err_no_files'),'warn');return;}
   if(flashing){toast(t('err_flashing'),'warn');return;}
+  // Stop monitor if active before flashing
+  if(monitoring){
+    monitoring=false;
+    if(monReader){try{await monReader.cancel();}catch{}}
+    document.getElementById('btn-mon').textContent='📡 Monitor';
+    log('Monitor stopped before flash','warn');
+    await sleep(200);
+  }
+  // Ask user if they want to backup first
+  if(confirm(t('confirm_backup'))){
+    await backupFirmware();
+  }
   // Flash lock — confirm dialog
   if(!confirm(t('confirm_flash')))return;
   flashing=true;
@@ -1052,9 +1114,10 @@ async function startFlash(){
   flashDoneBytes=0;
   flashStartTime=performance.now();
 
-  const writer=port.writable.getWriter();
+  let writer=null;
   try{
-    await enterBootloader(writer);
+    // enterBootloader returns fresh writer after successful SYNC
+    writer=await enterBootloader(null);
     log('Bootloader sync ✅','ok');
 
     for(let i=0;i<FILES.length;i++){
@@ -1068,6 +1131,11 @@ async function startFlash(){
       dv0.setUint32(0,buf.length,true);dv0.setUint32(4,Math.ceil(buf.length/0x200),true);
       dv0.setUint32(8,0x200,true);dv0.setUint32(12,f.addr,true);
       await writer.write(slipEncode(buildCmd(0x02,bd)));totalWrites++;
+      // Validate FLASH_BEGIN response
+      writer.releaseLock();
+      try{await readResponse(2000);log('FLASH_BEGIN ACK ✅','ok');}
+      catch(e){log('FLASH_BEGIN response: '+e.message,'warn');}
+      writer=port.writable.getWriter();
       await yieldFrame();
 
       let offset=0,seq=0,yieldCounter=0;
@@ -1078,8 +1146,16 @@ async function startFlash(){
         dv.setUint32(0,chunk.length,true);dv.setUint32(4,seq++,true);
         dv.setUint32(8,0,true);dv.setUint32(12,0,true);
         block.set(chunk,16);
+        // XOR checksum: seed 0xEF, XOR all data bytes
+        let chk=0xEF;for(const b of chunk)chk^=b;
         try{
-          await writer.write(slipEncode(buildCmd(0x03,block)));totalWrites++;
+          await writer.write(slipEncode(buildCmd(0x03,block,chk)));totalWrites++;
+          // Validate FLASH_DATA response (every 8 blocks to avoid slowdown)
+          if(seq%8===0){
+            writer.releaseLock();
+            try{await readResponse(1000);}catch(e){log('FLASH_DATA warn: '+e.message,'warn');}
+            writer=port.writable.getWriter();
+          }
         }catch{errorCount++;}
         offset+=chunk.length;flashDoneBytes+=chunk.length;
         if(++yieldCounter%8===0){
@@ -1098,7 +1174,7 @@ async function startFlash(){
     setProg('flash',100,'Flash complete!');
     document.getElementById('eta-val').textContent='Done!';
     log('🎉 Flash complete! Device boot ho raha hai...','ok');
-    log('http://ir-remote.local ya device IP open karo','ok');
+    log('Open: http://ir-remote.local — if link fails, check router for device IP','ok');
     document.getElementById('step3').className='step done';
     setStep(5);
     toast(t('toast_flash_done'),'ok',5000);
@@ -1111,7 +1187,7 @@ async function startFlash(){
     setStep(4,true);
     toast('Flash failed: '+e.message,'err',6000);
   }finally{
-    writer.releaseLock();
+    if(writer)try{writer.releaseLock();}catch{}
     flashing=false;
     document.getElementById('btn-flash').disabled=false;
   }
@@ -1147,7 +1223,65 @@ function slipEncode(data){
   }
   out.push(0xC0);return new Uint8Array(out);
 }
-async function enterBootloader(writer){
+function slipDecode(bytes){
+  // Strip outer 0xC0 frame bytes and unescape
+  const out=[];let i=0;
+  while(i<bytes.length){
+    const b=bytes[i++];
+    if(b===0xC0)continue;
+    if(b===0xDB&&i<bytes.length){
+      const nb=bytes[i++];
+      if(nb===0xDC)out.push(0xC0);
+      else if(nb===0xDD)out.push(0xDB);
+      else{out.push(b);out.push(nb);}
+    }else{out.push(b);}
+  }
+  return new Uint8Array(out);
+}
+// Read one SLIP-framed response from port.readable, un-SLIP-decode and check status byte.
+// Returns decoded response bytes. Throws if status != 0x00.
+async function readResponse(timeoutMs=500){
+  if(!port||!port.readable)throw new Error('Port not open');
+  if(port.readable.locked)throw new Error('port.readable is already locked');
+  const reader=port.readable.getReader();
+  const rawBytes=[];
+  const deadline=Date.now()+timeoutMs;
+  try{
+    let inFrame=false;
+    while(Date.now()<deadline){
+      // short timeout per read attempt
+      const readPromise=reader.read();
+      const timeoutPromise=new Promise((_,rej)=>setTimeout(()=>rej(new Error('timeout')),200));
+      let value,done;
+      try{const r=await Promise.race([readPromise,timeoutPromise]);value=r.value;done=r.done;}
+      catch{break;}
+      if(done)break;
+      for(const b of value){
+        rawBytes.push(b);
+        if(b===0xC0){
+          if(inFrame&&rawBytes.length>2)break; // end of frame
+          inFrame=true;
+        }
+      }
+      if(rawBytes.length>1&&rawBytes[rawBytes.length-1]===0xC0&&inFrame)break;
+    }
+  }finally{
+    try{reader.releaseLock();}catch{}
+  }
+  if(rawBytes.length===0)throw new Error('No response from device — check BOOT mode');
+  const decoded=slipDecode(new Uint8Array(rawBytes));
+  // ESP response format: byte[0]=0x01 (direction), byte[1]=op, byte[2-3]=len, byte[4-7]=value, byte[8]=status, byte[9]=error
+  if(decoded.length>=10){
+    const status=decoded[8];
+    if(status!==0x00)throw new Error('ESP32 error response: status=0x'+status.toString(16)+' error=0x'+decoded[9].toString(16));
+  }
+  return decoded;
+}
+// enterBootloader: resets device into bootloader and syncs.
+// Returns a fresh writer (caller must releaseLock when done).
+async function enterBootloader(existingWriter){
+  // Release any existing writer so we can freely read/write during sync
+  if(existingWriter){try{existingWriter.releaseLock();}catch{}}
   await port.setSignals({dataTerminalReady:false,requestToSend:true});
   await sleep(100);
   await port.setSignals({dataTerminalReady:true,requestToSend:false});
@@ -1157,7 +1291,25 @@ async function enterBootloader(writer){
   const sd=new Uint8Array(36);
   sd[0]=0x07;sd[1]=0x07;sd[2]=0x12;sd[3]=0x20;sd.fill(0x55,4);
   const sp=slipEncode(buildCmd(0x08,sd));
-  for(let i=0;i<7;i++){await writer.write(sp);await sleep(50);}
+  // Send multiple SYNC attempts and read back responses
+  let synced=false;
+  for(let i=0;i<7;i++){
+    const w=port.writable.getWriter();
+    try{await w.write(sp);}finally{w.releaseLock();}
+    await sleep(50);
+    try{
+      await readResponse(300);
+      synced=true;
+      log('SYNC response received ✅','ok');
+      break;
+    }catch(e){
+      log('SYNC attempt '+(i+1)+': '+e.message,'warn');
+    }
+    await sleep(50);
+  }
+  if(!synced)throw new Error('SYNC failed — device not in bootloader mode. Hold BOOT, press RESET.');
+  // Return a fresh writer for the caller to use
+  return port.writable.getWriter();
 }
 async function hardReset(writer){
   await port.setSignals({dataTerminalReady:false,requestToSend:true});
@@ -1169,9 +1321,11 @@ async function hardReset(writer){
 /* ── MONITOR ── */
 async function toggleMonitor(){
   if(!port)return;
+  if(flashing){toast('Cannot use monitor during flash','err');return;}
   monitoring=!monitoring;
   const btn=document.getElementById('btn-mon');
   if(monitoring){
+    if(port.readable.locked){toast('Serial port is busy — try again later','warn');monitoring=false;return;}
     btn.textContent='⏹ Stop';
     log('Serial monitor chalu...','ok');
     monReader=port.readable.getReader();
