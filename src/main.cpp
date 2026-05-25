@@ -181,6 +181,7 @@ void setup() {
     // ── IR Transmitter ────────────────────────────────────────
     irTransmitter.begin(irPins);
 
+    Serial.printf("[MEM] pre-webUI heap=%u\n", ESP.getFreeHeap());
     // ── Web Server ────────────────────────────────────────────
     btModule.begin();
     // Feature #4: wire BLE status events to WebSocket
@@ -196,6 +197,7 @@ void setup() {
         }
     }
     webUI.begin();
+    Serial.printf("[MEM] post-webUI heap=%u\n", ESP.getFreeHeap());
     webUI.startCaptivePortal();  // Batch 3: DNS redirect on AP mode
 
     // ── Scheduler ────────────────────────────────────────────
@@ -276,7 +278,7 @@ void loop() {
 
     if (millis() - s_lastStatusBroadcast >= STATUS_BROADCAST_INTERVAL_MS) {
         s_lastStatusBroadcast = millis();
-        webUI.broadcastStatus();
+        if (ESP.getFreeHeap() >= 20000) webUI.broadcastStatus();
     }
     yield();
 }

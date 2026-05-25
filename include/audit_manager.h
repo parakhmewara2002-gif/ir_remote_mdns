@@ -23,7 +23,7 @@
 #include <freertos/semphr.h>  // MUTEX FIX: guard _entries vector mutations
 
 #define AUDIT_LOG_FILE      "/audit_log.json"
-#define AUDIT_MAX_ENTRIES   200     // circular - oldest dropped when full
+#define AUDIT_MAX_ENTRIES   50      // was 200 — each entry ~240B; 200 = 47KB heap
 #define AUDIT_MAX_DETAIL    128     // max chars in detail string
 
 // ── Event source modules ──────────────────────────────────────

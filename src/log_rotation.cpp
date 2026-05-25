@@ -25,6 +25,8 @@ void LogRotationManager::begin() {
 void LogRotationManager::loop() {
     if (millis() - _lastCheck < LOG_ROT_CHECK_MS) return;
     _lastCheck = millis();
+    // LittleFS dir open needs ~2KB heap; skip if low to avoid OOM abort
+    if (ESP.getFreeHeap() < 20000) return;
     pruneOldLogs();
 }
 
