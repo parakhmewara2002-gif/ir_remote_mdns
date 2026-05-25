@@ -115,6 +115,9 @@ void SdManager::begin() {
     }
 
     _mount();
+    // Prevent _probeSd() from firing immediately on first loop() tick.
+    // Without this, loop() tick 1 tries SD.begin() 3x again right after begin().
+    _lastProbeMs = millis();
 }
 
 // ── [#36] _mount with SPI frequency auto-tune ───────────────

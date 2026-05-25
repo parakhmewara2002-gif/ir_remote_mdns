@@ -119,7 +119,8 @@ void NfcModule::begin() {
     if (!_nfcMutex) _nfcMutex = xSemaphoreCreateMutex();
     _loadTags();
     _cfg = loadGpioConfig();
-    _initPN532();
+    // Skip 1-second I2C probe when NFC is disabled in config
+    if (_cfg.enabled) _initPN532();
 }
 
 NfcTag NfcModule::lastTag() const {

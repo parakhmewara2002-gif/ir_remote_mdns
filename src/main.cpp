@@ -181,9 +181,10 @@ void setup() {
     // ── IR Transmitter ────────────────────────────────────────
     irTransmitter.begin(irPins);
 
-    Serial.printf("[MEM] pre-webUI heap=%u\n", ESP.getFreeHeap());
+    Serial.printf("[MEM] pre-btModule heap=%u\n", ESP.getFreeHeap());
     // ── Web Server ────────────────────────────────────────────
     btModule.begin();
+    Serial.printf("[MEM] post-btModule heap=%u\n", ESP.getFreeHeap());
     // Feature #4: wire BLE status events to WebSocket
     btModule.setWsBroadcastCb([](const String& json) {
         webUI.broadcastRaw(json);
@@ -280,6 +281,13 @@ void loop() {
         s_lastStatusBroadcast = millis();
         if (ESP.getFreeHeap() >= 20000) webUI.broadcastStatus();
     }
+
+    static bool s_firstLoop = true;
+    if (s_firstLoop) {
+        s_firstLoop = false;
+        Serial.printf("[MEM] post-firstLoop heap=%u\n", ESP.getFreeHeap());
+    }
+
     yield();
 }
 
