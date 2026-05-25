@@ -22,36 +22,53 @@ jobs:
           channel: stable
           cache: true
 
-      - name: Write local.properties
+      - name: Create fresh Flutter project
         run: |
-          echo "flutter.sdk=$FLUTTER_ROOT" > flasher_app/android/local.properties
-          echo "sdk.dir=$ANDROID_SDK_ROOT" >> flasher_app/android/local.properties
+          flutter create --org com.irremote --project-name ir_remote_flasher tmp_project
+          # Copy our source files over the generated ones
+          cp -r flasher_app/lib/* tmp_project/lib/
+          cp flasher_app/pubspec.yaml tmp_project/pubspec.yaml
+          cp flasher_app/android/app/src/main/AndroidManifest.xml tmp_project/android/app/src/main/AndroidManifest.xml
+          cp -r flasher_app/android/app/src/main/res/xml tmp_project/android/app/src/main/res/ 2>/dev/null || true
+          cp flasher_app/android/gradle.properties tmp_project/android/gradle.properties
 
-      - name: Flutter pub get
-        working-directory: flasher_app
+      - name: Get dependencies
+        working-directory: tmp_project
         run: flutter pub get
 
-      - name: Flutter build APK
-        working-directory: flasher_app
+      - name: Build APK
+        working-directory: tmp_project
         run: flutter build apk --release
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: IR-Remote-Flasher
-          path: flasher_app/build/app/outputs/flutter-apk/app-release.apk
+          path: tmp_project/build/app/outputs/flutter-apk/app-release.apk
 
-      - name: Release
+      - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: apk-v${{ github.run_number }}
           name: IR Remote Flasher APK v${{ github.run_number }}
           body: |
-            Android APK — ESP32 IR Remote Flasher
+            ## IR Remote Flasher — Android APK
 
-            Install: Download → Install (allow unknown sources) → USB OTG connect → Flash
+            ESP32 ko Android phone se flash karo via USB OTG.
 
-            Supported chips: CP2102, CH340, FTDI, ESP32-S3
-          files: flasher_app/build/app/outputs/flutter-apk/app-release.apk
+            ### Install:
+            1. APK download karo
+            2. Phone mein install karo (Settings → Unknown Sources → Allow)
+            3. USB OTG adapter se ESP32 connect karo
+            4. App open → Scan → Connect → Download → Flash
+
+            ### Supported USB chips:
+            - CP2102 (Silicon Labs) — most WROOM32 boards
+            - CH340 / CH341 (QinHeng)
+            - FTDI
+            - ESP32-S3 Native USB
+
+            ### Requirements: Android 5.0+ (API 21+), USB OTG support
+          files: tmp_project/build/app/outputs/flutter-apk/app-release.apk
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
