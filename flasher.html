@@ -1321,10 +1321,28 @@ async function readResponse(timeoutMs=500){
 }
 // enterBootloader: resets device into bootloader and syncs.
 // Returns a fresh writer (caller must releaseLock when done).
+async function flushSerial(){
+  // Drain any buffered firmware output before sending bootloader commands
+  if(!port||!port.readable||port.readable.locked)return;
+  const reader=port.readable.getReader();
+  const deadline=Date.now()+300;
+  try{
+    while(Date.now()<deadline){
+      let timeoutId;
+      try{
+        await Promise.race([
+          reader.read(),
+          new Promise((_,rej)=>{timeoutId=setTimeout(()=>rej(new Error('flush done')),80);})
+        ]);
+        clearTimeout(timeoutId);
+      }catch{break;}
+    }
+  }finally{try{reader.releaseLock();}catch{}}
+}
 async function enterBootloader(existingWriter){
   if(existingWriter){try{existingWriter.releaseLock();}catch{}}
   try{
-    // ESP32 bootloader entry: RTS=HIGH (EN low) + DTR=HIGH (IO0 low), then release EN
+    // ESP32 bootloader entry: RTS=HIGH (EN/RST low) + DTR=HIGH (IO0 low), then release EN
     await port.setSignals({dataTerminalReady:true,requestToSend:true});
     await sleep(100);
     await port.setSignals({dataTerminalReady:true,requestToSend:false});
@@ -1334,6 +1352,8 @@ async function enterBootloader(existingWriter){
     log('DTR/RTS signals not supported by this adapter — try manual BOOT mode','warn');
   }
   await sleep(500);
+  // Flush stale firmware serial output before sending SYNC
+  await flushSerial();
   const sd=new Uint8Array(36);
   sd[0]=0x07;sd[1]=0x07;sd[2]=0x12;sd[3]=0x20;sd.fill(0x55,4);
   const sp=slipEncode(buildCmd(0x08,sd));
@@ -1341,9 +1361,9 @@ async function enterBootloader(existingWriter){
   for(let i=0;i<7;i++){
     const w=port.writable.getWriter();
     try{await w.write(sp);}finally{w.releaseLock();}
-    await sleep(100); // give ESP32 time to respond (50ms was too short)
+    await sleep(150);
     try{
-      await readResponse(400);
+      await readResponse(500);
       synced=true;
       log('SYNC response received ✅','ok');
       break;
