@@ -500,6 +500,8 @@ const FILES=[
   {name:'firmware.bin',  addr:0x10000, key:'firmware'},
   {name:'littlefs.bin',  addr:0x310000,key:'littlefs'},
 ];
+const BLOCK_SIZE=0x200;   // ESP32 flash block size
+const BACKUP_SIZE=0x100000; // 1MB default firmware backup size
 
 let port=null,bufs={},monitoring=false,monReader=null;
 let flashing=false; // flash lock
@@ -657,7 +659,6 @@ function setStep(n,isError){
 }
 
 /* ── TOAST ── */
-function sanitize(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
 function toast(msg,type='ok',dur=3500){
   const c=document.getElementById('toast-container');
   const el=document.createElement('div');
@@ -731,7 +732,7 @@ function log(msg,type='info'){
   box.appendChild(d);
   requestAnimationFrame(()=>{box.scrollTop=box.scrollHeight;});
 }
-function clearLog(){document.getElementById('log').innerHTML='';}
+function clearLog(){const b=document.getElementById('log');while(b.firstChild)b.removeChild(b.firstChild);}
 
 /* ── DOWNLOAD ── */
 async function downloadAll(){
@@ -768,8 +769,10 @@ async function downloadAll(){
       document.getElementById('sz-'+f.key).textContent=kb+' KB';
       document.getElementById('fi-'+f.key).className='fc ready';
       document.getElementById('fs-'+f.key).textContent='✅';
-      log(f.name+' ready — '+kb+' KB | SHA256: '+hashHex.slice(0,16)+'...','ok');
-      if(usedProxy){toast('⚠️ '+f.name+' downloaded via CORS proxy — verify SHA-256 in log','warn',5000);}
+      log(f.name+' ready — '+kb+' KB','ok');
+      log('SHA256: '+hashHex,'ok');
+      if(usedProxy){toast('⚠️ '+f.name+' via CORS proxy — verify SHA-256 in log!','warn',6000);}
+      else{toast('SHA-256 logged for '+f.name,'ok',2000);}
     }catch(e){
       document.getElementById('fi-'+f.key).className='fc';
       document.getElementById('fs-'+f.key).textContent='❌';
@@ -812,6 +815,8 @@ function loadLocalFiles(files){
 /* ── CONNECT ── */
 async function connectDevice(){
   if(!('serial' in navigator)){log('WebSerial nahi hai — Chrome use karo','err');return;}
+  const connectBtn=document.getElementById('btn-connect');
+  connectBtn.disabled=true;
   try{
     log('Port select karo...');
     port=await navigator.serial.requestPort({filters:[
@@ -840,13 +845,18 @@ async function connectDevice(){
     if(Object.keys(bufs).length===FILES.length){
       document.getElementById('btn-flash').disabled=false;setStep(3);
     } else {setStep(2);}
-    document.getElementById('conn-info').innerHTML='<div class="alert ai" style="margin-top:9px">✅ Connected! Firmware download karo phir Flash karo.</div>';
+    const connInfoDiv=document.createElement('div');
+    connInfoDiv.className='alert ai';
+    connInfoDiv.style.marginTop='9px';
+    connInfoDiv.textContent='✅ Connected! Firmware download karo phir Flash karo.';
+    document.getElementById('conn-info').appendChild(connInfoDiv);
     errorCount=0;totalWrites=0;updateHealth();
     // Warn before page close during flash
     window.onbeforeunload=()=>flashing?'Flash chal rahi hai! Page band mat karo.':null;
   }catch(e){
     if(e.name!=='NotFoundError')log('Connect failed: '+e.message,'err');
     else log('Port selection cancelled','warn');
+    connectBtn.disabled=false;
   }
 }
 
@@ -871,7 +881,7 @@ async function disconnectDevice(){
   document.getElementById('step1').className='step active';
   document.getElementById('step2').className='step';
   document.getElementById('step3').className='step';
-  document.getElementById('conn-info').innerHTML='';
+  document.getElementById('conn-info').textContent='';
   document.getElementById('btn-mon').textContent='📡 Monitor';
   setStep(1);updateHealth();
   toast(t('toast_disconnected'),'warn');
@@ -892,8 +902,8 @@ async function backupFirmware(){
   try{
     // flash_read cmd: addr, size, block_size, max_blocks
     const rd=new Uint8Array(16);const dv=new DataView(rd.buffer);
-    dv.setUint32(0,0x10000,true);dv.setUint32(4,0x100000,true);
-    dv.setUint32(8,0x200,true);dv.setUint32(12,0x800,true);
+    dv.setUint32(0,0x10000,true);dv.setUint32(4,BACKUP_SIZE,true);
+    dv.setUint32(8,BLOCK_SIZE,true);dv.setUint32(12,0x800,true);
     await writer.write(slipEncode(buildCmd(0x0e,rd)));
   }finally{
     writer.releaseLock();
@@ -903,12 +913,12 @@ async function backupFirmware(){
   const rawBytes=[];let total=0;
   const timeout=setTimeout(()=>reader.cancel(),15000);
   try{
-    while(total<0x100000){
+    while(total<BACKUP_SIZE){
       const {value,done}=await reader.read();
       if(done)break;
       for(const b of value)rawBytes.push(b);
       total+=value.length;
-      setProg('backup',Math.round(total/0x100000*100),'Reading firmware...');
+      setProg('backup',Math.round(total/BACKUP_SIZE*100),'Reading firmware...');
       await yieldFrame();
     }
   }catch{}
@@ -945,16 +955,17 @@ async function backupFirmware(){
 /* ── CHIP INFO ── */
 async function readChipInfo(){
   if(!port)return;
+  const btn=document.getElementById('btn-chipread');
+  btn.disabled=true;
   log('Reading chip info...','info');
   let writer;
   try{
     writer=await enterBootloader(null);
-    // READ_REG requires SLIP response parsing for real values
     const d=new Uint8Array(4);new DataView(d.buffer).setUint32(0,0x3FF00050,true);
     await writer.write(slipEncode(buildCmd(0x0a,d)));
     await sleep(80);
   }catch(e){log('Chip read error: '+e.message,'err');return;}
-  finally{if(writer)try{writer.releaseLock();}catch{}}
+  finally{if(writer)try{writer.releaseLock();}catch{};btn.disabled=false;}
   // NOTE: Real chip values require full SLIP response parsing.
   // Connect and run Health Check for real data.
   const info=port.getInfo();
@@ -974,6 +985,8 @@ async function readChipInfo(){
 
 async function healthCheck(){
   if(!port)return;
+  const hbtn=document.getElementById('btn-healthcheck');
+  hbtn.disabled=true;
   log('Health check...','info');
   let writer;
   try{
@@ -987,12 +1000,14 @@ async function healthCheck(){
     log('Health check: SYNC OK. RTT: N/A (requires response parsing)','ok');
     updateHealth();
   }catch(e){log('Health check error: '+e.message,'err');}
-  finally{if(writer)try{writer.releaseLock();}catch{}}
+  finally{if(writer)try{writer.releaseLock();}catch{};hbtn.disabled=false;}
 }
 
 /* ── PARTITION READER ── */
 async function readPartitions(){
   if(!port)return;
+  const ptbtn=document.getElementById('btn-ptread');
+  ptbtn.disabled=true;
   log('Partition read requires bootloader mode — showing expected default layout','warn');
   // NOTE: True partition table read requires esptool or full SLIP flash_read at 0x8000.
   // The table below is the expected default layout for this firmware (from partitions_custom.csv).
@@ -1022,6 +1037,7 @@ async function readPartitions(){
   document.getElementById('pt-empty').style.display='block';
   document.getElementById('pt-table').style.display='table';
   log('Partition table: default layout shown (esptool needed for real read)','warn');
+  ptbtn.disabled=false;
 }
 
 /* ── WIFI PROVISIONING ── */
@@ -1052,11 +1068,10 @@ async function eraseFlash(){
     try{
       // Opcode 0x04 = FLASH_ERASE_CHIP (correct ESP32 ROM opcode; 0x30 was wrong)
       await writer.write(slipEncode(buildCmd(0x04,new Uint8Array(0))));
-      // Validate response
-      writer.releaseLock();
+      writer.releaseLock();writer=null;
       await readResponse(30000); // erase can take up to 30s
       log('Erase response OK ✅','ok');
-    }finally{try{writer.releaseLock();}catch{}}
+    }finally{if(writer)try{writer.releaseLock();}catch{}}
     await animateProg('erase',10000);
     log('Flash erase complete ✅','ok');
     toast('Flash erased ✅','ok');
@@ -1087,6 +1102,7 @@ async function startFlash(){
   if(!port){toast(t('err_no_port'),'err');return;}
   if(Object.keys(bufs).length<FILES.length){toast(t('err_no_files'),'warn');return;}
   if(flashing){toast(t('err_flashing'),'warn');return;}
+  document.getElementById('btn-flash').disabled=true;
   // Stop monitor if active before flashing
   if(monitoring){
     monitoring=false;
@@ -1128,8 +1144,8 @@ async function startFlash(){
       log('Flashing '+f.name+' @ 0x'+f.addr.toString(16)+'...','info');
 
       const bd=new Uint8Array(16);const dv0=new DataView(bd.buffer);
-      dv0.setUint32(0,buf.length,true);dv0.setUint32(4,Math.ceil(buf.length/0x200),true);
-      dv0.setUint32(8,0x200,true);dv0.setUint32(12,f.addr,true);
+      dv0.setUint32(0,buf.length,true);dv0.setUint32(4,Math.ceil(buf.length/BLOCK_SIZE),true);
+      dv0.setUint32(8,BLOCK_SIZE,true);dv0.setUint32(12,f.addr,true);
       await writer.write(slipEncode(buildCmd(0x02,bd)));totalWrites++;
       // Validate FLASH_BEGIN response
       writer.releaseLock();
@@ -1140,7 +1156,7 @@ async function startFlash(){
 
       let offset=0,seq=0,yieldCounter=0;
       while(offset<buf.length){
-        const chunk=buf.slice(offset,offset+0x200);
+        const chunk=buf.slice(offset,offset+BLOCK_SIZE);
         const block=new Uint8Array(16+chunk.length);
         const dv=new DataView(block.buffer);
         dv.setUint32(0,chunk.length,true);dv.setUint32(4,seq++,true);
@@ -1150,12 +1166,11 @@ async function startFlash(){
         let chk=0xEF;for(const b of chunk)chk^=b;
         try{
           await writer.write(slipEncode(buildCmd(0x03,block,chk)));totalWrites++;
-          // Validate FLASH_DATA response (every 8 blocks to avoid slowdown)
-          if(seq%8===0){
-            writer.releaseLock();
-            try{await readResponse(1000);}catch(e){log('FLASH_DATA warn: '+e.message,'warn');}
-            writer=port.writable.getWriter();
-          }
+          // Validate every FLASH_DATA block for data integrity
+          writer.releaseLock();
+          writer=null;
+          try{await readResponse(1000);}catch(e){errorCount++;log('FLASH_DATA warn block '+seq+': '+e.message,'warn');}
+          writer=port.writable.getWriter();
         }catch{errorCount++;}
         offset+=chunk.length;flashDoneBytes+=chunk.length;
         if(++yieldCounter%8===0){
@@ -1184,6 +1199,7 @@ async function startFlash(){
     log('Flash error: '+e.message,'err');
     log('115200 baud try karo aur dobara karo','warn');
     document.getElementById('step3').className='step error';
+    document.getElementById('flash-wrap').style.display='none';
     setStep(4,true);
     toast('Flash failed: '+e.message,'err',6000);
   }finally{
@@ -1238,8 +1254,6 @@ function slipDecode(bytes){
   }
   return new Uint8Array(out);
 }
-// Read one SLIP-framed response from port.readable, un-SLIP-decode and check status byte.
-// Returns decoded response bytes. Throws if status != 0x00.
 async function readResponse(timeoutMs=500){
   if(!port||!port.readable)throw new Error('Port not open');
   if(port.readable.locked)throw new Error('port.readable is already locked');
@@ -1247,30 +1261,37 @@ async function readResponse(timeoutMs=500){
   const rawBytes=[];
   const deadline=Date.now()+timeoutMs;
   try{
-    let inFrame=false;
-    while(Date.now()<deadline){
-      // short timeout per read attempt
-      const readPromise=reader.read();
-      const timeoutPromise=new Promise((_,rej)=>setTimeout(()=>rej(new Error('timeout')),200));
+    let frameStart=-1;
+    outer: while(Date.now()<deadline){
+      const remaining=deadline-Date.now();
+      if(remaining<=0)break;
       let value,done;
-      try{const r=await Promise.race([readPromise,timeoutPromise]);value=r.value;done=r.done;}
-      catch{break;}
+      try{
+        const r=await Promise.race([
+          reader.read(),
+          new Promise((_,rej)=>setTimeout(()=>rej(new Error('timeout')),Math.min(remaining,200)))
+        ]);
+        value=r.value;done=r.done;
+      }catch{break;}
       if(done)break;
       for(const b of value){
         rawBytes.push(b);
+        const idx=rawBytes.length-1;
         if(b===0xC0){
-          if(inFrame&&rawBytes.length>2)break; // end of frame
-          inFrame=true;
+          if(frameStart===-1){
+            frameStart=idx; // opening 0xC0
+          } else if(idx>frameStart+1){
+            break outer; // closing 0xC0 found with data between
+          }
+          // else: two consecutive 0xC0 (empty frame), reset frameStart
         }
       }
-      if(rawBytes.length>1&&rawBytes[rawBytes.length-1]===0xC0&&inFrame)break;
     }
   }finally{
     try{reader.releaseLock();}catch{}
   }
   if(rawBytes.length===0)throw new Error('No response from device — check BOOT mode');
   const decoded=slipDecode(new Uint8Array(rawBytes));
-  // ESP response format: byte[0]=0x01 (direction), byte[1]=op, byte[2-3]=len, byte[4-7]=value, byte[8]=status, byte[9]=error
   if(decoded.length>=10){
     const status=decoded[8];
     if(status!==0x00)throw new Error('ESP32 error response: status=0x'+status.toString(16)+' error=0x'+decoded[9].toString(16));
@@ -1312,10 +1333,13 @@ async function enterBootloader(existingWriter){
   return port.writable.getWriter();
 }
 async function hardReset(writer){
-  await port.setSignals({dataTerminalReady:false,requestToSend:true});
-  await sleep(100);
-  await port.setSignals({dataTerminalReady:false,requestToSend:false});
-  log('Device reset signal sent','ok');
+  if(!port)return;
+  try{
+    await port.setSignals({dataTerminalReady:false,requestToSend:true});
+    await sleep(100);
+    await port.setSignals({dataTerminalReady:false,requestToSend:false});
+    log('Device reset signal sent','ok');
+  }catch(e){log('Reset signal error: '+e.message,'warn');}
 }
 
 /* ── MONITOR ── */
