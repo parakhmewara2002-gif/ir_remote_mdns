@@ -23,7 +23,6 @@
 #include "system_module.h"
 #include "audit_manager.h"   // Batch 1: Audit Trail
 #include "auth_manager.h"
-#include "bluetooth_module.h"
 #include "wifi_pen_module.h"  // WiFi Penetration Module
 #include "watchdog_manager.h" // Ultra Pro Watchdog - status fields
 #include <ctime>          // time(), localtime_r() for SD backup timestamps
@@ -110,8 +109,6 @@ WebUI::WebUI() : _server(HTTP_PORT), _ws(WS_PATH) {
 
 void WebUI::begin() {
     setupWebSocket();
-    // BLE routes: only if BLE is enabled in config (saves ~18 routes = ~5KB)
-    if (btModule.isEnabled()) setupBluetoothRoutes();
     setupApiRoutes();
     setupGroupRoutes();
     setupSchedulerRoutes();

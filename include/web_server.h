@@ -104,8 +104,6 @@ private:
     // SD card extended routes (features 42-45)
     void setupSdExtRoutes     ();
 
-    // Bluetooth routes
-    void setupBluetoothRoutes ();
 
     // ── Button handlers ───────────────────────────────────────
     void handleGetButtons  (AsyncWebServerRequest*);

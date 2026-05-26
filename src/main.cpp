@@ -52,7 +52,6 @@
 #include "watchdog_manager.h"       // Batch 3: Self-Healing Watchdog
 #include "log_rotation.h"           // Batch 4: Log Rotation + CSV Export
 #include "mic_module.h"
-#include "bluetooth_module.h"             // Mic: I2S Streaming + SD Recording
 #include "wifi_pen_module.h"        // WiFi Penetration Module
 #include "ac_detector.h"            // Non-Contact AC Power Detector
 
@@ -157,14 +156,6 @@ void setup() {
     // ── IR Transmitter ────────────────────────────────────────
     irTransmitter.begin(irPins);
 
-    Serial.printf("[MEM] pre-btModule heap=%u\n", ESP.getFreeHeap());
-    // ── Web Server ────────────────────────────────────────────
-    btModule.begin();
-    Serial.printf("[MEM] post-btModule heap=%u\n", ESP.getFreeHeap());
-    // Wire BLE status events to WebSocket
-    btModule.setWsBroadcastCb([](const String& json) {
-        webUI.broadcastRaw(json);
-    });
     webUI.begin();
     Serial.printf("[MEM] post-webUI heap=%u\n", ESP.getFreeHeap());
     webUI.startCaptivePortal();  // Batch 3: DNS redirect on AP mode
@@ -220,7 +211,6 @@ void loop() {
     wifiMgr.loop();
     scheduler.loop();
     webUI.loop();
-    btModule.loop();
     irDB.loop();
 
     // SD loop: hot-plug probe, log flush, macro step tick
