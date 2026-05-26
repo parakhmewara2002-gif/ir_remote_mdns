@@ -1,7 +1,7 @@
-# IR Remote Web GUI — v10.0.0 (BLE Proxy)
+# IR Remote Web GUI — v11.0.0 (Stability Release)
 
 **Target hardware:** ESP32-WROOM-32 (4 MB flash). Full feature build —
-IR + BLE + classic-NFC (PN532) + RFID (MFRC522) + Sub-GHz (CC1101) +
+IR + classic-NFC (PN532) + RFID (MFRC522) + Sub-GHz (CC1101) +
 nRF24 + Wi-Fi pen-testing + I²S/ADC microphone + SD-card storage,
 all driven from a single-page web UI served straight off the chip.
 
@@ -12,24 +12,29 @@ whole UI loads from LittleFS as a gzipped `index.html`.
 
 ---
 
-## What's new in v10.0.0 — BLE Proxy (Watch ⇄ ESP32 ⇄ Phone)
+## What's new in v11.0.0 — Stability Release
 
-ESP32 connects to a smartwatch (as Central), then advertises itself
-as a fake watch (Peripheral) so the phone reconnects to ESP32 instead
-of the real watch. All HR / battery / temperature notifications are
-forwarded transparently end-to-end.
+**Removed modules (freed ~110 KB heap):**
+- BLE (scanner / central / peripheral / HID / proxy / bonds) — freed ~90 KB
+- A2DP Bluetooth audio — freed ~5 KB
+- Rules Engine — freed ~3 KB
+- Walkie-Talkie (I²S voice over UDP) — freed ~8 KB
+- Speaker driver — freed ~4 KB
 
-```
-GET  /api/ble/proxy           # current state
-POST /api/ble/proxy/config    # { "watchAddress": "AA:BB:CC:DD:EE:FF",
-                              #   "spoofName":    "Mi Band 6",
-                              #   "forwardHR":    true,
-                              #   "forwardBatt":  true,
-                              #   "forwardTemp":  false,
-                              #   "autoStart":    false }
-POST /api/ble/proxy/start
-POST /api/ble/proxy/stop
-```
+**Boot heap before:** ~9 KB free (crash-prone)
+**Boot heap after:** ~125 KB free (stable)
+
+**Bug fixes:**
+- IR TX queue starvation: inner drain loop added — all queued signals now transmit
+- Audit log race condition: `filter()` now holds mutex during iteration (was crashing under concurrent writes)
+- WebSocket message JSON injection: button names now serialized via ArduinoJson
+- Scheduler fire JSON injection: ArduinoJson replaces raw `snprintf`
+- SD SPI mutex missing in `serveIndex` and `handleSdDownload` — wrapped with `g_spi_vspi_mutex`
+- WebSocket protocol: `ws://` hardcoded → dynamic (`wss://` on HTTPS)
+- WS status pill: amber animated dot when disconnected, retry counter shown, green steady on connect
+- SD Extra tab: `SdExtraUI` JS object was missing entirely (13 buttons threw `ReferenceError`)
+- Delete endpoints: buttons/groups/schedules were using GET → corrected to POST
+- Group reorder: backend now handles `{order:[...]}` array body correctly
 
 ---
 
@@ -39,9 +44,6 @@ POST /api/ble/proxy/stop
 |---|---|---|---|
 | IR receiver / transmitter | ✅ | ✅ | 116 protocols enabled, raw capture + replay, groups, scheduler |
 | AC mains-detector (non-contact) | ✅ | ✅ | Live RMS poll, threshold + hysteresis, buzzer alert, WS events |
-| BLE scanner / central / peripheral / HID-KB / HID-Media / HID-Gamepad | ✅ | ✅ | Roles 1-6 wired end-to-end |
-| BLE proxy (role 7) | ✅ | ✅ | Watch address, spoof name, HR/batt/temp forward, start/stop panel |
-| BLE bonds / multi-connect / time-sync | ✅ | ✅ | Bond list + delete, multi-slot table, time-sync toggle |
 | NFC (PN532) | ✅ | ✅ | Read / save / clone / emulate, dictionary attack, SD library |
 | RFID (MFRC522) | ✅ | ✅ | Read / write / emulate, allowlist + per-card macros |
 | Sub-GHz (CC1101) | ✅ | ✅ | Capture, save, replay, raw modulation, SD signals |
@@ -52,36 +54,10 @@ POST /api/ble/proxy/stop
 | Audit log | ✅ | ✅ | RAM ring + LittleFS rotation; SD mirror toggleable |
 | Watchdog | ✅ | ✅ | Crash log persisted on LittleFS |
 | Auth (login / logout / password / config) | ✅ | ✅ | Bearer-token; can be disabled via `/api/v1/auth/config` |
-| Rules engine | ✅ | ✅ | Create / edit / fire / toggle / delete + preset save/load/import/export |
 | Scheduler | ✅ | ✅ | NTP-driven, timezone-aware |
 | mDNS + NetBIOS | ✅ | n/a | `ir-remote.local` (mDNS) + `http://ir-remote` (NetBIOS/NBNS — Windows without Bonjour) |
 
 Legend: ✅ fully wired
-
----
-
-## ⚡ Web Flasher — No Install Required
-
-Flash your ESP32 directly from the browser — no drivers, no Python, no esptool needed.
-Works on **Desktop Chrome / Edge** and **Android Chrome v89+** (via USB OTG).
-
-> 🔗 **[Open Web Flasher](https://htmlpreview.github.io/?https://github.com/parakhmewara2002-gif/ir_remote_mdns/blob/master/flasher.html)**
-
-| | |
-|---|---|
-| ✅ Desktop | Chrome / Edge — direct USB |
-| ✅ Android | Chrome v89+ — USB OTG adapter needed |
-| ❌ iOS | WebSerial not supported |
-| ❌ Firefox / Safari | WebSerial not supported |
-
-**Steps:**
-1. Open the link above in Chrome or Edge
-2. Click **Download Firmware** — fetches all 4 `.bin` files from latest release
-3. Click **Connect** — select your ESP32 COM port
-4. *(Optional)* Click **Erase Flash** on first install
-5. Click **Flash Now** — done in ~30 seconds
-
-> 💡 Android users: plug ESP32 into your phone via a **USB OTG adapter**, then open Chrome and tap Connect.
 
 ---
 
@@ -158,7 +134,7 @@ All endpoints return JSON unless they're file downloads or
 
 Live status is pushed over WebSocket at `ws://<host>/ws`. Events:
 `ir_received`, `status`, `message`, `scheduled_tx`, `ac_detected`,
-`ac_lost`, `ble_status`, `ble_proxy`, `rfid`, `nfc`, `connected`, `pong`.
+`ac_lost`, `rfid`, `nfc`, `connected`, `pong`.
 
 Key REST roots:
 
@@ -166,16 +142,14 @@ Key REST roots:
   database CRUD + transmit + macros
 - `/api/schedules`, `/api/ntp/*` — scheduler + NTP
 - `/api/ac/*` — AC detector
-- `/api/ble/*` — BLE (scanner, central, peripheral, HID, bonds,
-  multi-slot, proxy, time-sync)
 - `/api/nfc/*`, `/api/rfid/*` — tag I/O
 - `/api/subghz/*`, `/api/nrf24/*` — sub-GHz + nRF24
 - `/api/wpen/*` — Wi-Fi pen-test (deauth, handshake capture, PMKID, etc.)
 - `/api/mic/*` — microphone control + recordings
 - `/api/sd/*` — SD card file ops
 - `/api/system/*`, `/api/modules/*` — module enable/disable, system info
-- `/api/v1/*` — public/v1 API for external scripts (auth, rules,
-  audit, logs, watchdog, system info)
+- `/api/v1/*` — public/v1 API for external scripts (auth, audit,
+  logs, watchdog, system info)
 
 See `src/web_server*.cpp` for the canonical list.
 
@@ -190,9 +164,8 @@ ir_remote_mdns/
 ├── include/                   # All module headers
 ├── src/
 │   ├── main.cpp               # Boot + module orchestration
-│   ├── web_server*.cpp        # HTTP routes (split across 11 files)
+│   ├── web_server*.cpp        # HTTP routes (split across files)
 │   ├── ac_detector.cpp        # Non-contact AC mains detector
-│   ├── bluetooth_module.cpp   # BLE multi-role + proxy
 │   ├── ir_database.cpp        # Saved IR buttons + groups
 │   ├── ir_receiver.cpp        # NEC/Sony/Samsung/raw RX
 │   ├── ir_transmitter.cpp     # IR TX
@@ -203,7 +176,6 @@ ir_remote_mdns/
 │   ├── wifi_pen_module.cpp    # 802.11 attack engine + WSL bypass
 │   ├── mic_module.cpp         # I²S + ADC audio
 │   ├── sd_manager.cpp         # SD card ops
-│   ├── rule_manager.cpp       # Trigger → action engine
 │   ├── scheduler.cpp          # Cron + NTP
 │   ├── auth_manager.cpp       # Bearer-token auth
 │   ├── audit_manager.cpp      # Audit log (RAM + LittleFS)
@@ -258,7 +230,7 @@ Settings → Modules, freeing its GPIOs for other uses.
 
 | Layer | Where |
 |---|---|
-| Product version | `README.md` (this file) — currently `v10.0.0` |
+| Product version | `README.md` (this file) — currently `v11.0.0` |
 | Build constant | `platformio.ini` → `-DFIRMWARE_VERSION` (kept in step) |
 | Fallback | `include/config.h` `#ifndef FIRMWARE_VERSION` block |
 | CI release tag | `.github/workflows/build.yml` `env.FIRMWARE_VERSION` |
@@ -267,8 +239,7 @@ When you bump the product version, also bump the build constant in
 `platformio.ini`, the fallback in `config.h`, and the workflow env var
 — or use a single source of truth via `git describe` later.
 
-See [CHANGELOG.md](CHANGELOG.md) for per-version notes (covers v1 → v7
-in detail; v8-v10 notes are still being backfilled).
+See [CHANGELOG.md](CHANGELOG.md) for per-version notes.
 
 ---
 
@@ -277,4 +248,3 @@ in detail; v8-v10 notes are still being backfilled).
 See `LICENSE`. The codebase pulls in third-party libraries (FastLED,
 IRremoteESP8266, ESPAsyncWebServer, ArduinoJson, RF24, Adafruit
 PN532, Adafruit BusIO) under their respective licenses.
-
