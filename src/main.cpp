@@ -52,7 +52,6 @@
 #include "watchdog_manager.h"       // Batch 3: Self-Healing Watchdog
 #include "log_rotation.h"           // Batch 4: Log Rotation + CSV Export
 #include "mic_module.h"
-#include "bt_a2dp.h"                // Classic BT A2DP Sink
 #include "bluetooth_module.h"             // Mic: I2S Streaming + SD Recording
 #include "wifi_pen_module.h"        // WiFi Penetration Module
 #include "ac_detector.h"            // Non-Contact AC Power Detector
@@ -118,7 +117,6 @@ void setup() {
     sysModule.begin();
     wifiPen.begin();               // WiFi Pen Module
     micModule.begin();             // Mic: I2S streaming + SD recording
-    btA2dp.begin();                // BT A2DP Sink (classic BT music)
 
     // ── Audit Trail (Batch 1) ─────────────────────────────────
     auditMgr.begin();

@@ -94,8 +94,6 @@ private:
     // Batch 4
     void setupLogRoutes       ();
 
-    // BT A2DP Sink
-    void setupA2dpRoutes();
 
     // WiFi Penetration Module
     void setupWpenRoutes      ();

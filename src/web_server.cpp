@@ -26,7 +26,6 @@
 #include "bluetooth_module.h"
 #include "wifi_pen_module.h"  // WiFi Penetration Module
 #include "watchdog_manager.h" // Ultra Pro Watchdog - status fields
-#include "bt_a2dp.h"
 #include <ctime>          // time(), localtime_r() for SD backup timestamps
 
 WebUI webUI;
@@ -140,8 +139,6 @@ void WebUI::begin() {
     if (wifiPen.enabled()) setupWpenRoutes();
     setupAcRoutes();
     setupSdExtRoutes();
-    // A2DP routes: only if enabled (saves ~8 routes = ~2.2KB)
-    if (btA2dp.isEnabled()) setupA2dpRoutes();
     setupStaticRoutes();          // must be last - catch-all
     _server.begin();
     Serial.printf(DEBUG_TAG " HTTP server on port %d\n", HTTP_PORT);
