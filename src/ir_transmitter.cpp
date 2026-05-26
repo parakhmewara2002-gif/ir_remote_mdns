@@ -89,29 +89,43 @@ void IRTransmitter::begin(const IrPinConfig& pins) {
 void IRTransmitter::_txTask(void* param) {
     IRTransmitter* self = static_cast<IRTransmitter*>(param);
     for (;;) {
-        // Block until transmitAsync() posts a command
+        // Block until transmitAsync() posts a command.
+        // QUEUE DRAIN FIX: a binary semaphore saturates at 1 regardless of how
+        // many times it is "given". If transmitAsync() is called N times in rapid
+        // succession (e.g. a macro with 3 steps, or a scheduler firing a
+        // repeatCount=3 entry), only the first Give changes the state from 0->1;
+        // the remaining N-1 gives are silently discarded.  The original code
+        // popped exactly ONE item per semaphore wakeup, so items 2..N sat in the
+        // queue until the next unrelated transmitAsync() call - effectively lost.
+        //
+        // Fix: after waking, drain ALL pending items from the queue before
+        // blocking again. A 50ms poll timeout (portMAX_DELAY -> 50ms) ensures
+        // the task also catches items enqueued in the gap between the last pop
+        // and the next Give (race window is tiny but possible).
         xSemaphoreTake(self->_notify, portMAX_DELAY);
 
-        // Pop pointer under mutex
-        IrTxCommand* cmd = nullptr;
-        if (xSemaphoreTake(self->_queueMutex, pdMS_TO_TICKS(20)) == pdTRUE) {
-            if (!self->_ptrQueue.empty()) {
-                cmd = self->_ptrQueue.front();
-                self->_ptrQueue.pop();
+        for (;;) {
+            // Pop next pointer under mutex
+            IrTxCommand* cmd = nullptr;
+            if (xSemaphoreTake(self->_queueMutex, pdMS_TO_TICKS(20)) == pdTRUE) {
+                if (!self->_ptrQueue.empty()) {
+                    cmd = self->_ptrQueue.front();
+                    self->_ptrQueue.pop();
+                }
+                xSemaphoreGive(self->_queueMutex);
             }
-            xSemaphoreGive(self->_queueMutex);
-        }
-        if (!cmd) continue;  // spurious wakeup - shouldn't happen
+            if (!cmd) break;  // queue empty - go back to blocking wait
 
-        // Execute TX - IRButton is fully owned by cmd (deep copy from transmitAsync)
-        if (cmd->rawMode && !cmd->btn.rawData.empty()) {
-            self->transmitRaw(cmd->btn.rawData.data(),
-                              cmd->btn.rawData.size(),
-                              cmd->btn.freqKHz);
-        } else {
-            self->transmit(cmd->btn);
+            // Execute TX - IRButton is fully owned by cmd (deep copy from transmitAsync)
+            if (cmd->rawMode && !cmd->btn.rawData.empty()) {
+                self->transmitRaw(cmd->btn.rawData.data(),
+                                  cmd->btn.rawData.size(),
+                                  cmd->btn.freqKHz);
+            } else {
+                self->transmit(cmd->btn);
+            }
+            delete cmd;  // release heap-allocated command object
         }
-        delete cmd;  // release heap-allocated command object
     }
 }
 

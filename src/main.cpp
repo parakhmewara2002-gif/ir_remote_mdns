@@ -362,12 +362,20 @@ static void onScheduleFire(const ScheduleEntry& entry) {
     // FIX: send structured WS event 'scheduled_tx' so the GUI toast fires correctly.
     // Previously used broadcastMessage() which sends generic 'message' event;
     // the JS switch already has case 'scheduled_tx' wired to a named toast.
+    //
+    // RACE FIX: use ArduinoJson to escape the button name properly (it may
+    // contain '"' or '\' which would inject into the raw JSON string, causing
+    // malformed JSON on the WebSocket clients). The old 128-byte char buf was
+    // also too small for a max-length button name (96 chars + 56 overhead = 152).
     {
-        char schedBuf[128];
-        snprintf(schedBuf, sizeof(schedBuf),
-                 "{\"event\":\"scheduled_tx\",\"name\":\"%s\",\"buttonId\":%d}",
-                 copy.name.c_str(), entry.buttonId);
-        webUI.broadcastRaw(schedBuf);
+        JsonDocument _schedDoc;
+        _schedDoc["event"]    = "scheduled_tx";
+        _schedDoc["name"]     = copy.name;
+        _schedDoc["buttonId"] = entry.buttonId;
+        String _schedStr;
+        _schedStr.reserve(192);
+        serializeJson(_schedDoc, _schedStr);
+        webUI.broadcastRaw(_schedStr);
     }
     auditMgr.logScheduler(entry.name, entry.buttonId);
     if (sdMgr.isAvailable())

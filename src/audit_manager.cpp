@@ -136,6 +136,13 @@ void AuditManager::logApi(const String& endpoint, const String& method) {
 // ─────────────────────────────────────────────────────────────
 std::vector<AuditEntry> AuditManager::filter(int sourceFilter, size_t limit) const {
     std::vector<AuditEntry> result;
+    // RACE FIX: take mutex while iterating _entries.
+    // _addEntry() is called from loop() (Core 1) and hw_poll task (Core 1) via
+    // nfcModule/rfidModule -> auditMgr.log(). filter() is called from HTTP
+    // handlers on AsyncTCP task (Core 0). Without this lock a concurrent
+    // push_back() that triggers reallocation invalidates our iterator,
+    // causing a crash or corrupted result.
+    if (_mux) xSemaphoreTake(_mux, portMAX_DELAY);
     // Iterate newest-first (reverse)
     for (int i = (int)_entries.size() - 1; i >= 0 && result.size() < limit; --i) {
         const auto& e = _entries[i];
@@ -143,6 +150,7 @@ std::vector<AuditEntry> AuditManager::filter(int sourceFilter, size_t limit) con
             result.push_back(e);
         }
     }
+    if (_mux) xSemaphoreGive(_mux);
     return result;
 }
 

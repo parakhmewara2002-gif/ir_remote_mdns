@@ -274,8 +274,18 @@ void WebUI::setupStaticRoutes() {
         // Feature 42: SD asset override check
         if (sdMgr.hasAsset("index.html.gz")) {
             String sdPath = sdMgr.assetPath("index.html.gz");
+            // RACE FIX: take the VSPI bus mutex before SD.open().
+            // hw_poll task (Core 1) also accesses the SPI bus via nfc/rfid
+            // modules. Direct SD.open() without the bus mutex can corrupt the
+            // SPI transaction in progress, causing SD reads to return garbage
+            // or the card to stop responding.
+            extern SemaphoreHandle_t g_spi_vspi_mutex;
+            bool _sdLocked = (g_spi_vspi_mutex &&
+                xSemaphoreTakeRecursive(g_spi_vspi_mutex, pdMS_TO_TICKS(200)) == pdTRUE);
             File sdF = SD.open(sdPath, FILE_READ);
+            if (_sdLocked) xSemaphoreGiveRecursive(g_spi_vspi_mutex);
             if (sdF) {
+                sdF.close();  // close probe handle; beginResponse opens its own handle
                 AsyncWebServerResponse* r = req->beginResponse(
                     SD, sdPath, "text/html");
                 r->addHeader("Content-Encoding", "gzip");
@@ -1311,12 +1321,17 @@ void WebUI::broadcastMessage(const String& text) {
     // textAll() is not thread-safe from non-loop() contexts (e.g., rule engine callbacks
     // firing from hw_poll task or other task contexts.
     // _pushWsMessage uses a mutex-protected queue and is safe from any task.
-    char buf[256];
-    int n = snprintf(buf, sizeof(buf),
-        "{\"event\":\"message\",\"message\":\"%s\"}", text.c_str());
-    if (n > 0 && n < (int)sizeof(buf)) {
-        _pushWsMessage(String(buf));
-    }
+    //
+    // JSON ESCAPE FIX: use ArduinoJson to serialize the message string so that
+    // button names containing '"' or '\' (e.g. Auto-saved: My "TV" remote) do not
+    // inject into the JSON frame, producing malformed JSON on WebSocket clients.
+    JsonDocument _msgDoc;
+    _msgDoc["event"]   = "message";
+    _msgDoc["message"] = text;
+    String _msgStr;
+    _msgStr.reserve(text.length() + 40);
+    serializeJson(_msgDoc, _msgStr);
+    _pushWsMessage(_msgStr);
 }
 
 
@@ -1950,7 +1965,12 @@ void WebUI::handleSdDownload(AsyncWebServerRequest* req) {
 
     // Heap-allocate File so it stays open after this stack frame exits.
     // ESPAsyncWebServer streams it from the async task; we clean up on disconnect.
+    // RACE FIX: take VSPI bus mutex before SD.open() - same guard used by SdManager.
+    extern SemaphoreHandle_t g_spi_vspi_mutex;
+    bool _sdLocked = (g_spi_vspi_mutex &&
+        xSemaphoreTakeRecursive(g_spi_vspi_mutex, pdMS_TO_TICKS(200)) == pdTRUE);
     File* fp = new File(SD.open(path.c_str(), FILE_READ));
+    if (_sdLocked) xSemaphoreGiveRecursive(g_spi_vspi_mutex);
     if (!fp || !*fp) {
         delete fp;
         sendJson(req, 500, "{\"error\":\"Cannot open file\"}"); return;
