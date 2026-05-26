@@ -161,18 +161,10 @@ void setup() {
     // ── Web Server ────────────────────────────────────────────
     btModule.begin();
     Serial.printf("[MEM] post-btModule heap=%u\n", ESP.getFreeHeap());
-    // Feature #4: wire BLE status events to WebSocket
+    // Wire BLE status events to WebSocket
     btModule.setWsBroadcastCb([](const String& json) {
         webUI.broadcastRaw(json);
     });
-    // Feature #P: auto-start proxy if saved config has autoStart=true
-    {
-        ProxyConfig pCfg = btModule.proxyLoadConfig();
-        if (pCfg.autoStart && !pCfg.watchAddress.isEmpty()) {
-            Serial.println("[PROXY] Auto-starting proxy from saved config");
-            btModule.proxyStart(pCfg);
-        }
-    }
     webUI.begin();
     Serial.printf("[MEM] post-webUI heap=%u\n", ESP.getFreeHeap());
     webUI.startCaptivePortal();  // Batch 3: DNS redirect on AP mode
