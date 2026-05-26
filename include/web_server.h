@@ -86,14 +86,6 @@ private:
     void setupMicRoutes       ();
     void setupMicPinsRoute    ();
 
-    // Batch 2
-    void setupRuleRoutes      ();
-    void handleRulePresetList (AsyncWebServerRequest*);
-    void handleRulePresetSave (AsyncWebServerRequest*, uint8_t*, size_t);
-    void handleRulePresetLoad (AsyncWebServerRequest*, uint8_t*, size_t);
-    void handleRuleExport     (AsyncWebServerRequest*, uint8_t*, size_t);
-    void handleRuleImport     (AsyncWebServerRequest*, uint8_t*, size_t);
-
     // Batch 3
     void setupAuthRoutes         ();
     void setupCaptivePortal      ();
@@ -101,12 +93,6 @@ private:
 
     // Batch 4
     void setupLogRoutes       ();
-
-    // Walkie-Talkie
-    void setupWalkieTalkieRoutes();
-
-    // Speaker (PAM8043)
-    void setupSpeakerRoutes();
 
     // BT A2DP Sink
     void setupA2dpRoutes();
@@ -236,13 +222,6 @@ private:
     // ── Batch 1: Debug ────────────────────────────────────────
     void handleDebugStats  (AsyncWebServerRequest*);
     void handleDebugModules(AsyncWebServerRequest*);
-
-    // ── Batch 2: Rules ────────────────────────────────────────
-    void handleRuleCreate(AsyncWebServerRequest*, uint8_t*, size_t);
-    void handleRuleUpdate(AsyncWebServerRequest*, uint8_t*, size_t);
-    void handleRuleDelete(AsyncWebServerRequest*);
-    void handleRuleToggle(AsyncWebServerRequest*);
-    void handleRuleFire  (AsyncWebServerRequest*);
 
     // ── Batch 3: Auth ─────────────────────────────────────────
     void handleAuthLogin   (AsyncWebServerRequest*, uint8_t*, size_t);

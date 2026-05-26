@@ -3,7 +3,6 @@
 //  Manchester decode via GPIO polling, EM4100 64-bit format
 // ============================================================
 #include "rfid_module.h"
-#include "rule_manager.h"
 #include "audit_manager.h"
 #include "web_server.h"
 #include "sd_manager.h"
@@ -186,8 +185,6 @@ void RfidModule::loop() {
                 // endpoint happened to be polled at the right moment.
                 // Now: card detected in hw_poll task -> immediately fire rules
                 // and broadcast to WebSocket, regardless of HTTP polling.
-                bool known = !_lastCard.name.isEmpty();
-                ruleMgr.triggerRfidScan(uid, _lastCard.name, known);
                 auditMgr.logSystem(("RFID_SCAN:" + uid).c_str());
                 // Broadcast card event to all connected WebSocket clients
                 webUI.broadcastRaw(

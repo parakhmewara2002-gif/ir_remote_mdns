@@ -5,7 +5,6 @@
 #include <Wire.h>
 #include <SPI.h>
 #include <Adafruit_PN532.h>
-#include "rule_manager.h"
 #include "audit_manager.h"
 #include "web_server.h"
 #include "sd_manager.h"
@@ -309,7 +308,6 @@ void NfcModule::_pollForTag() {
             break;
         }
     }
-    ruleMgr.triggerNfcScan(tag.uid, tagName);
     auditMgr.logSystem(("NFC_SCAN:" + tag.uid).c_str());
     webUI.broadcastRaw(
         String("{\"event\":\"nfc\",\"uid\":\"") + tag.uid +

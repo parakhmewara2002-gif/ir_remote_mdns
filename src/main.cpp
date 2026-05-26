@@ -48,12 +48,10 @@
 #include "nrf24_module.h"
 #include "system_module.h"
 #include "audit_manager.h"          // Batch 1: Audit Trail
-#include "rule_manager.h"           // Batch 2: IF-THEN Automation
 #include "auth_manager.h"           // Batch 3: Authentication
 #include "watchdog_manager.h"       // Batch 3: Self-Healing Watchdog
 #include "log_rotation.h"           // Batch 4: Log Rotation + CSV Export
 #include "mic_module.h"
-#include "speaker_module.h"         // PAM8043 I2S Speaker Output
 #include "bt_a2dp.h"                // Classic BT A2DP Sink
 #include "bluetooth_module.h"             // Mic: I2S Streaming + SD Recording
 #include "wifi_pen_module.h"        // WiFi Penetration Module
@@ -120,28 +118,10 @@ void setup() {
     sysModule.begin();
     wifiPen.begin();               // WiFi Pen Module
     micModule.begin();             // Mic: I2S streaming + SD recording
-    speakerModule.begin();         // Speaker: PAM8043 I2S output
     btA2dp.begin();                // BT A2DP Sink (classic BT music)
 
     // ── Audit Trail (Batch 1) ─────────────────────────────────
     auditMgr.begin();
-
-    // ── Rule Engine (Batch 2) ─────────────────────────────────
-    ruleMgr.onIrTransmit([](uint32_t buttonId) {
-        IRButton btn = irDB.findById(buttonId);
-        if (btn.id) {
-            // FIX: transmitAsync - rule actions fire from loop() context.
-            // Blocking transmit() here would stall all subsequent rule actions.
-            irTransmitter.transmitAsync(btn);
-            auditMgr.logIrTx(btn.name, btn.id);
-        }
-    });
-    ruleMgr.onMacroRun([](const String& name) {
-        macroMgr.run(name);
-        auditMgr.logMacro(name, true);
-    });
-    ruleMgr.begin();
-    ruleMgr.triggerBoot();
 
     // ── Auth (Batch 3) ────────────────────────────────────────
     authMgr.begin();
@@ -160,11 +140,9 @@ void setup() {
 
     // ── AC Non-Contact Detector ───────────────────────────────
     acDetector.onAcDetected = []() {
-        ruleMgr.triggerAcDetected();
         webUI.broadcastMessage("{\"event\":\"ac_detected\"}");
     };
     acDetector.onAcLost = []() {
-        ruleMgr.triggerAcLost();
         webUI.broadcastMessage("{\"event\":\"ac_lost\"}");
     };
     acDetector.begin();
@@ -253,7 +231,6 @@ void loop() {
     scheduler.loop();
     webUI.loop();
     btModule.loop();
-    speakerModule.loop();   // tone generator tick
     irDB.loop();
 
     // SD loop: hot-plug probe, log flush, macro step tick
@@ -273,7 +250,6 @@ void loop() {
     wifiPen.loop();                // WiFi Pen: timeout watchdog
     acDetector.loop();             // AC Detector: RMS sampling + threshold
     auditMgr.loop();   // Batch 1
-    ruleMgr.loop();    // Batch 2
     authMgr.loop();    // Batch 3: expire sessions
     wdtMgr.loop();     // Batch 3: watchdog feed + health check
     micModule.loop();  // Mic: SD recording tick
@@ -345,7 +321,6 @@ static void ensureDefaultFiles() {
 static void onIRReceived(const IRButton& btn) {
     webUI.broadcastIREvent(btn);
     auditMgr.logIrRx(protocolName(btn.protocol), String(btn.code, HEX));  // Batch 1
-    ruleMgr.triggerIrReceived(btn.id, protocolName(btn.protocol));         // Batch 2
 
     if (!irDB.autoSaveEnabled()) return;
 

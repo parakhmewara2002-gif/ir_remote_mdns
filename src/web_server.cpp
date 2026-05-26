@@ -27,7 +27,6 @@
 #include "wifi_pen_module.h"  // WiFi Penetration Module
 #include "watchdog_manager.h" // Ultra Pro Watchdog - status fields
 #include "bt_a2dp.h"
-#include "speaker_module.h"
 #include <ctime>          // time(), localtime_r() for SD backup timestamps
 
 WebUI webUI;
@@ -133,7 +132,6 @@ void WebUI::begin() {
     setupDebugRoutes();
     // Mic routes: only if I2S mic is active (saves ~11 routes = ~3KB)
     if (micModule.i2sActive()) { setupMicRoutes(); setupMicPinsRoute(); }
-    setupRuleRoutes();
     setupAuthRoutes();
     setupCaptivePortal();
     setupWatchdogRoutes();
@@ -142,9 +140,6 @@ void WebUI::begin() {
     if (wifiPen.enabled()) setupWpenRoutes();
     setupAcRoutes();
     setupSdExtRoutes();
-    setupWalkieTalkieRoutes();
-    // Speaker routes: only if enabled (saves ~8 routes = ~2.2KB)
-    if (speakerModule.isEnabled()) setupSpeakerRoutes();
     // A2DP routes: only if enabled (saves ~8 routes = ~2.2KB)
     if (btA2dp.isEnabled()) setupA2dpRoutes();
     setupStaticRoutes();          // must be last - catch-all

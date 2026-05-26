@@ -9,7 +9,6 @@
 //  5. STA IP         -> assigned by router (dynamic)
 // ============================================================
 #include "wifi_manager.h"
-#include "rule_manager.h"
 #include <LittleFS.h>
 #include <ArduinoJson.h>
 #include <ESPmDNS.h>
@@ -84,9 +83,6 @@ void WiFiManager::_onStaGotIP() {
     // If WiFi never connects (bad creds in new firmware), this line is never
     // reached, boot counter stays elevated, and safe mode or rollback activates.
 
-    // Batch 2+3: Rule trigger on WiFi connect
-    ruleMgr.triggerWifiConnect(WiFi.SSID());
-
     // Start mDNS so the device is reachable at http://ir-remote.local
     startMdns();
 
@@ -104,8 +100,6 @@ void WiFiManager::_onStaDisconnected() {
     if (wasConn) {
         Serial.println(DEBUG_TAG " [WiFi] STA disconnected - AP fallback ON");
         stopMdns();
-        // Batch 2+3: Rule trigger on WiFi disconnect
-        ruleMgr.triggerWifiDisconnect();
     } else {
         Serial.println(DEBUG_TAG " [WiFi] STA connect failed - AP still ON");
     }

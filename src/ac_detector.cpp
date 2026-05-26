@@ -11,7 +11,6 @@
 //    4. Compare with threshold + hysteresis
 // ============================================================
 #include "ac_detector.h"
-#include "rule_manager.h"
 #include "audit_manager.h"
 #include "wifi_manager.h"
 #include "gpio_config.h"

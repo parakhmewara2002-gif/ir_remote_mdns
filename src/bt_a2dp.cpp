@@ -2,7 +2,6 @@
 //  bt_a2dp.cpp  —  Classic BT A2DP Sink + AVRC Controller
 // ============================================================
 #include "bt_a2dp.h"
-#include "speaker_module.h"
 #include <esp_bt.h>
 #include <esp_bt_main.h>
 #include <esp_bt_device.h>
@@ -72,8 +71,6 @@ static void _avrcTgtCb(esp_avrc_tg_cb_event_t ev, esp_avrc_tg_cb_param_t* p) {
     if (!_self) return;
     if (ev == ESP_AVRC_TG_SET_ABSOLUTE_VOLUME_CMD_EVT) {
         uint8_t v = p->set_abs_vol.volume; // 0-127
-        uint8_t pct = (uint8_t)((uint32_t)v * 100 / 127);
-        speakerModule.setVolume(pct);
         _self->_onVolumeChanged(v);
         // Acknowledge to phone: send CHANGED response with new volume
         esp_avrc_rn_param_t rn_param;
@@ -197,7 +194,6 @@ void BtA2dpModule::prev()  { _avrcSendCmd(ESP_AVRC_PT_CMD_BACKWARD); }
 void BtA2dpModule::setVolume(uint8_t pct) {
     if (pct > 100) pct = 100;
     _cfg.volume = pct;
-    speakerModule.setVolume(pct);
     // Send absolute volume to phone (0-127 range)
     if (_initialized && (_state == A2dpState::CONNECTED ||
                          _state == A2dpState::PLAYING   ||
@@ -209,21 +205,7 @@ void BtA2dpModule::setVolume(uint8_t pct) {
 
 // ── Callbacks from IDF ────────────────────────────────────────
 void BtA2dpModule::_onAudioData(const uint8_t* buf, uint32_t len) {
-    if (!speakerModule.isEnabled()) return;
-    // A2DP delivers 16-bit STEREO PCM @ 44100 Hz (L,R interleaved)
-    // Downmix to mono so speaker I2S_NUM_1 (ONLY_LEFT) plays correct pitch
-    const uint32_t stereoSamples = len / (2 * sizeof(int16_t));
-    static int16_t monoBuf[512];
-    uint32_t outN = 0;
-    const int16_t* src = reinterpret_cast<const int16_t*>(buf);
-    while (outN < stereoSamples) {
-        uint32_t chunk = stereoSamples - outN;
-        if (chunk > 512) chunk = 512;
-        for (uint32_t i = 0; i < chunk; i++)
-            monoBuf[i] = (int16_t)(((int32_t)src[(outN+i)*2] + src[(outN+i)*2+1]) >> 1);
-        speakerModule.playSamples(monoBuf, chunk);
-        outN += chunk;
-    }
+    (void)buf; (void)len;
     _state = A2dpState::PLAYING;
 }
 
@@ -263,7 +245,6 @@ void BtA2dpModule::_onPeerName(const char* name) {
 void BtA2dpModule::_onVolumeChanged(uint8_t v) {
     // v = 0-127 from A2DP spec
     _cfg.volume = (uint8_t)((uint32_t)v * 100 / 127);
-    speakerModule.setVolume(_cfg.volume);
 }
 
 // ── Config ────────────────────────────────────────────────────
