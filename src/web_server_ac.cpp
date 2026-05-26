@@ -308,18 +308,18 @@ static const char AC_PAGE[] PROGMEM = R"rawhtml(<!DOCTYPE html>
       <span class="stat-val" id="statPin">GPIO 36</span>
     </div>
 
-    <h2 style="margin-top:20px">Rule Engine</h2>
+    <h2 style="margin-top:20px">AC Events</h2>
     <p style="font-size:12px;color:var(--muted);margin-bottom:10px">
-      AC detection events Rule Engine mein bhi trigger hote hain.
+      AC events WebSocket broadcast karta hai aur audit log mein record hote hain.
     </p>
     <div style="display:flex;gap:8px;flex-wrap:wrap">
       <span style="font-size:12px;padding:4px 10px;border-radius:6px;
                    background:rgba(0,230,118,.1);border:1px solid var(--green);color:var(--green)">
-        Trigger: AC_DETECTED
+        AC_DETECTED
       </span>
       <span style="font-size:12px;padding:4px 10px;border-radius:6px;
                    background:rgba(255,82,82,.1);border:1px solid var(--red);color:var(--red)">
-        Trigger: AC_LOST
+        AC_LOST
       </span>
     </div>
   </div>
