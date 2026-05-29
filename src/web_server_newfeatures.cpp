@@ -20,6 +20,8 @@
 #include "subghz_module.h"
 #include "auth_manager.h"
 #include "config.h"
+#include "ir_database.h"
+#include "ac_detector.h"
 #include <vector>
 #include <ArduinoJson.h>
 #include <freertos/FreeRTOS.h>
