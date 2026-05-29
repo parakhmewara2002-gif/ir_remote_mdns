@@ -212,8 +212,11 @@ jobs:
       - name: "🔍 Print build errors (debug)"
         if: failure()
         run: |
-          echo "=== BUILD FIRMWARE LOG ===" >> $GITHUB_STEP_SUMMARY
-          tail -200 build_firmware.log >> $GITHUB_STEP_SUMMARY 2>/dev/null || echo "No log file" >> $GITHUB_STEP_SUMMARY
+          echo "BUILD LOG:"
+          cat build_firmware.log 2>/dev/null | grep -E "error:|fatal error:|undefined|warning:" | head -80 || echo "no log"
+          echo "LAST 100 LINES:"
+          tail -100 build_firmware.log 2>/dev/null || echo "no log file"
+        continue-on-error: true
       
       - name: "📋 Upload build logs on failure"
         if: failure()
