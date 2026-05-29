@@ -2442,7 +2442,7 @@ bool SdManager::factoryResetWithRestore() {
     if (ok) {
         log("factoryResetWithRestore: restore OK, restarting...",
             SdLogLevel::INFO, "SD_BACKUP");
-        delay(500);
+        vTaskDelay(pdMS_TO_TICKS(500));
         ESP.restart();
     }
     return ok;
