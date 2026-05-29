@@ -155,7 +155,7 @@ void WatchdogManager::_checkLoopStall(unsigned long now) {
         Serial.printf(WDT_TAG " FATAL: loop() frozen for %lums - rebooting!\n", gap);
         auditMgr.log(AuditSource::SYSTEM, "LOOP_FREEZE",
                      String("Gap: ") + gap + "ms - rebooting", false);
-        delay(50);
+        vTaskDelay(pdMS_TO_TICKS(50));
         ESP.restart();
     } else if (gap > WDT_LOOP_MAX_MS) {
         Serial.printf(WDT_TAG " WARNING: loop() stall detected! Gap=%lums\n", gap);
@@ -204,7 +204,7 @@ void WatchdogManager::_checkHeap(uint32_t freeHeap, unsigned long now) {
 
         if (_heapCriticalCount >= 3) {
             Serial.println(WDT_TAG " Heap exhaustion after cleanup - rebooting");
-            delay(100);
+            vTaskDelay(pdMS_TO_TICKS(100));
             ESP.restart();
         }
     } else if (freeHeap < _heapThreshold) {
@@ -252,7 +252,7 @@ void WatchdogManager::_checkTemperature() {
                       temp, WDT_TEMP_REBOOT_C);
         auditMgr.log(AuditSource::SYSTEM, "THERMAL_REBOOT",
                      String("Temp: ") + temp + "C", false);
-        delay(50);
+        vTaskDelay(pdMS_TO_TICKS(50));
         ESP.restart();
     } else if (temp >= WDT_TEMP_THROTTLE_C) {
         if (!_thermalThrottled) {
