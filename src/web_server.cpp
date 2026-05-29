@@ -135,6 +135,7 @@ void WebUI::begin() {
     // WiFi Pen routes: only if enabled (saves ~27 routes = ~7.5KB)
     if (wifiPen.enabled()) setupWpenRoutes();
     setupAcRoutes();
+    setupNewFeatureRoutes();
     setupSdExtRoutes();
     setupStaticRoutes();          // must be last - catch-all
     _server.begin();
