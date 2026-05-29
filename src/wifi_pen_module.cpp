@@ -558,7 +558,7 @@ bool WifiPenModule::startAttack(WpenAttackType t, WpenMethod m,
             _hccapxInit(_aps[apIdx].ssid, strlen(_aps[apIdx].ssid));
             _snifferStart(ch);
             WiFi.disconnect(false);
-            delay(80);
+            vTaskDelay(pdMS_TO_TICKS(80));
             // Disambiguate begin() overload set in arduino-esp32 2.x by casting
             // arguments to a single overload's signature (const char* / int32_t).
             // Without this, the compiler can't pick between the char* and
@@ -1545,7 +1545,7 @@ bool WifiPenModule::probeForWps(uint8_t apIdx, uint32_t timeoutMs) {
 
     uint32_t start = millis();
     while (!_wpsDone && (millis() - start) < timeoutMs) {
-        delay(10);
+        vTaskDelay(pdMS_TO_TICKS(10));
     }
 
     esp_wifi_set_promiscuous(false);
