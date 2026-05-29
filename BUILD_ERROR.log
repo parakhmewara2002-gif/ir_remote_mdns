@@ -1,0 +1,150 @@
+Turn off this advice by setting config variable advice.detachedHead to false
+
+Library Manager: Adafruit PN532@1.3.0+sha.0bf3483 has been installed!
+Library Manager: Resolving dependencies...
+Library Manager: Installing Adafruit BusIO
+Unpacking 0% 10% 20% 30% 40% 50% 60% 70% 80% 90% 100%
+Library Manager: Adafruit BusIO@1.17.4 has been installed!
+Library Manager: Installing git+https://github.com/adafruit/Adafruit_BusIO.git#1.16.1
+git version 2.54.0
+Cloning into '/home/runner/.platformio/.cache/tmp/pkg-installing-i7x6zxm_'...
+Note: switching to '15fbda592d1b237b0a92cfb91841adb01a34efd9'.
+
+You are in 'detached HEAD' state. You can look around, make experimental
+changes and commit them, and you can discard any commits you make in this
+state without impacting any branches by switching back to a branch.
+
+If you want to create a new branch to retain commits you create, you may
+do so (now or later) by using -c with the switch command. Example:
+
+  git switch -c <new-branch-name>
+
+Or undo this operation with:
+
+  git switch -
+
+Turn off this advice by setting config variable advice.detachedHead to false
+
+Library Manager: Adafruit BusIO@1.16.1+sha.15fbda5 has been installed!
+Verbose mode can be enabled via `-v, --verbose` option
+CONFIGURATION: https://docs.platformio.org/page/boards/espressif32/esp32dev.html
+PLATFORM: Espressif 32 (6.6.0) > Espressif ESP32 Dev Module
+HARDWARE: ESP32 240MHz, 320KB RAM, 4MB Flash
+DEBUG: Current (cmsis-dap) External (cmsis-dap, esp-bridge, esp-prog, iot-bus-jtag, jlink, minimodule, olimex-arm-usb-ocd, olimex-arm-usb-ocd-h, olimex-arm-usb-tiny-h, olimex-jtag-tiny, tumpa)
+PACKAGES: 
+ - framework-arduinoespressif32 @ 3.20014.231204 (2.0.14) 
+ - tool-esptoolpy @ 1.40501.0 (4.5.1) 
+ - toolchain-xtensa-esp32 @ 8.4.0+2021r2-patch5
+LDF: Library Dependency Finder -> https://bit.ly/configure-pio-ldf
+LDF Modes: Finder ~ chain, Compatibility ~ soft
+Found 43 compatible libraries
+Scanning dependencies...
+Dependency Graph
+|-- IRremoteESP8266 @ 2.8.6
+|-- ESPAsyncWebServer @ 3.3.12
+|-- AsyncTCP @ 3.2.4
+|-- ArduinoJson @ 7.2.1
+|-- RF24 @ 1.4.8
+|-- FastLED @ 3.6.0
+|-- Adafruit PN532 @ 1.3.0+sha.0bf3483
+|-- Adafruit BusIO @ 1.16.1+sha.15fbda5
+|-- LittleFS @ 2.0.0
+|-- SD @ 2.0.0
+|-- SPI @ 2.0.0
+|-- Wire @ 2.0.0
+|-- WiFi @ 2.0.0
+|-- Preferences @ 2.0.0
+|-- HTTPClient @ 2.0.0
+|-- WiFiClientSecure @ 2.0.0
+|-- ESPmDNS @ 2.0.0
+|-- NetBIOS @ 2.0.0
+|-- DNSServer @ 2.0.0
+Building in release mode
+Compiling .pio/build/esp32dev/lib45c/FastLED/FastLED.cpp.o
+Compiling .pio/build/esp32dev/lib45c/FastLED/bitswap.cpp.o
+Compiling .pio/build/esp32dev/lib45c/FastLED/colorpalettes.cpp.o
+Compiling .pio/build/esp32dev/lib45c/FastLED/colorutils.cpp.o
+Compiling .pio/build/esp32dev/lib45c/FastLED/hsv2rgb.cpp.o
+Compiling .pio/build/esp32dev/lib45c/FastLED/lib8tion.cpp.o
+Compiling .pio/build/esp32dev/lib45c/FastLED/noise.cpp.o
+Compiling .pio/build/esp32dev/lib45c/FastLED/platforms.cpp.o
+Compiling .pio/build/esp32dev/lib45c/FastLED/platforms/esp/32/clockless_rmt_esp32.cpp.o
+Compiling .pio/build/esp32dev/lib45c/FastLED/power_mgt.cpp.o
+Compiling .pio/build/esp32dev/lib45c/FastLED/wiring.cpp.o
+Compiling .pio/build/esp32dev/src/ac_detector.cpp.o
+Compiling .pio/build/esp32dev/src/audit_manager.cpp.o
+Compiling .pio/build/esp32dev/src/auth_manager.cpp.o
+Compiling .pio/build/esp32dev/src/group_manager.cpp.o
+Compiling .pio/build/esp32dev/src/ir_database.cpp.o
+Compiling .pio/build/esp32dev/src/ir_receiver.cpp.o
+Compiling .pio/build/esp32dev/src/ir_transmitter.cpp.o
+Compiling .pio/build/esp32dev/src/log_rotation.cpp.o
+Compiling .pio/build/esp32dev/src/macro_manager.cpp.o
+Compiling .pio/build/esp32dev/src/main.cpp.o
+Compiling .pio/build/esp32dev/src/mic_module.cpp.o
+Compiling .pio/build/esp32dev/src/nfc_module.cpp.o
+Compiling .pio/build/esp32dev/src/nrf24_module.cpp.o
+In file included from .pio/libdeps/esp32dev/FastLED/src/FastLED.h:75,
+                 from include/system_module.h:9,
+                 from src/main.cpp:49:
+.pio/libdeps/esp32dev/FastLED/src/fastspi.h:157:23: note: #pragma message: No hardware SPI pins defined.  All SPI access will default to bitbanged output
+ #      pragma message "No hardware SPI pins defined.  All SPI access will default to bitbanged output"
+                       ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Compiling .pio/build/esp32dev/src/rfid_module.cpp.o
+Compiling .pio/build/esp32dev/src/scheduler.cpp.o
+Compiling .pio/build/esp32dev/src/sd_manager.cpp.o
+Compiling .pio/build/esp32dev/src/subghz_module.cpp.o
+Compiling .pio/build/esp32dev/src/system_module.cpp.o
+Compiling .pio/build/esp32dev/src/task_manager.cpp.o
+In file included from .pio/libdeps/esp32dev/FastLED/src/FastLED.h:75,
+                 from include/system_module.h:9,
+                 from src/system_module.cpp:4:
+.pio/libdeps/esp32dev/FastLED/src/fastspi.h:157:23: note: #pragma message: No hardware SPI pins defined.  All SPI access will default to bitbanged output
+ #      pragma message "No hardware SPI pins defined.  All SPI access will default to bitbanged output"
+                       ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Compiling .pio/build/esp32dev/src/watchdog_manager.cpp.o
+Compiling .pio/build/esp32dev/src/web_server.cpp.o
+Compiling .pio/build/esp32dev/src/web_server_ac.cpp.o
+In file included from .pio/libdeps/esp32dev/FastLED/src/FastLED.h:75,
+                 from include/system_module.h:9,
+                 from src/web_server.cpp:23:
+.pio/libdeps/esp32dev/FastLED/src/fastspi.h:157:23: note: #pragma message: No hardware SPI pins defined.  All SPI access will default to bitbanged output
+ #      pragma message "No hardware SPI pins defined.  All SPI access will default to bitbanged output"
+                       ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Compiling .pio/build/esp32dev/src/web_server_batch1.cpp.o
+src/web_server_ac.cpp: In lambda function:
+src/web_server_ac.cpp:585:32: warning: 'AsyncWebServerResponse* AsyncWebServerRequest::beginResponse_P(int, const String&, const uint8_t*, size_t, AwsTemplateProcessor)' is deprecated: Replaced by beginResponse(int code, const String& contentType, const uint8_t* content, size_t len, AwsTemplateProcessor callback = nullptr) [-Wdeprecated-declarations]
+             sizeof(AC_PAGE) - 1);
+                                ^
+In file included from include/web_server.h:7,
+                 from src/web_server_ac.cpp:12:
+.pio/libdeps/esp32dev/ESPAsyncWebServer/src/ESPAsyncWebServer.h:390:29: note: declared here
+     AsyncWebServerResponse* beginResponse_P(int code, const String& contentType, const uint8_t* content, size_t len, AwsTemplateProcessor callback = nullptr) {
+                             ^~~~~~~~~~~~~~~
+Compiling .pio/build/esp32dev/src/web_server_batch3.cpp.o
+Compiling .pio/build/esp32dev/src/web_server_batch4.cpp.o
+In file included from .pio/libdeps/esp32dev/FastLED/src/FastLED.h:75,
+                 from include/system_module.h:9,
+                 from src/web_server_batch1.cpp:25:
+.pio/libdeps/esp32dev/FastLED/src/fastspi.h:157:23: note: #pragma message: No hardware SPI pins defined.  All SPI access will default to bitbanged output
+ #      pragma message "No hardware SPI pins defined.  All SPI access will default to bitbanged output"
+                       ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Compiling .pio/build/esp32dev/src/web_server_mic.cpp.o
+Compiling .pio/build/esp32dev/src/web_server_modules.cpp.o
+Compiling .pio/build/esp32dev/src/web_server_newfeatures.cpp.o
+In file included from .pio/libdeps/esp32dev/FastLED/src/FastLED.h:75,
+                 from include/system_module.h:9,
+                 from src/web_server_modules.cpp:10:
+.pio/libdeps/esp32dev/FastLED/src/fastspi.h:157:23: note: #pragma message: No hardware SPI pins defined.  All SPI access will default to bitbanged output
+ #      pragma message "No hardware SPI pins defined.  All SPI access will default to bitbanged output"
+                       ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+src/web_server_newfeatures.cpp: In lambda function:
+src/web_server_newfeatures.cpp:640:13: error: 'irDB' was not declared in this scope
+             irDB.setAutoSave(en);
+             ^~~~
+src/web_server_newfeatures.cpp: In lambda function:
+src/web_server_newfeatures.cpp:652:32: error: 'acDetector' was not declared in this scope
+             doc["running"]   = acDetector.isEnabled();
+                                ^~~~~~~~~~
+*** [.pio/build/esp32dev/src/web_server_newfeatures.cpp.o] Error 1
+========================= [FAILED] Took 48.48 seconds =========================
