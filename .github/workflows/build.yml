@@ -209,13 +209,15 @@ jobs:
           retention-days: 90
           if-no-files-found: error
 
-      - name: "🔍 Print build errors (debug)"
+      - name: "🔍 Commit build errors to repo (debug)"
         if: failure()
         run: |
-          echo "BUILD LOG:"
-          cat build_firmware.log 2>/dev/null | grep -E "error:|fatal error:|undefined|warning:" | head -80 || echo "no log"
-          echo "LAST 100 LINES:"
-          tail -100 build_firmware.log 2>/dev/null || echo "no log file"
+          git config user.email "ci@github.com"
+          git config user.name "GitHub CI"
+          tail -150 build_firmware.log > BUILD_ERROR.log 2>/dev/null || echo "no log" > BUILD_ERROR.log
+          git add BUILD_ERROR.log
+          git commit -m "ci: build error log [skip ci]" || true
+          git push origin master || true
         continue-on-error: true
       
       - name: "📋 Upload build logs on failure"
