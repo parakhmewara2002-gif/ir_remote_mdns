@@ -100,6 +100,7 @@ private:
 
     // AC Non-Contact Detector
     void setupAcRoutes        ();
+    void setupNewFeatureRoutes ();
 
     // SD card extended routes (features 42-45)
     void setupSdExtRoutes     ();
