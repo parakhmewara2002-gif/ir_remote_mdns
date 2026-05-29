@@ -209,6 +209,12 @@ jobs:
           retention-days: 90
           if-no-files-found: error
 
+      - name: "🔍 Print build errors (debug)"
+        if: failure()
+        run: |
+          echo "=== BUILD FIRMWARE LOG ===" >> $GITHUB_STEP_SUMMARY
+          tail -200 build_firmware.log >> $GITHUB_STEP_SUMMARY 2>/dev/null || echo "No log file" >> $GITHUB_STEP_SUMMARY
+      
       - name: "📋 Upload build logs on failure"
         if: failure()
         uses: actions/upload-artifact@v4
