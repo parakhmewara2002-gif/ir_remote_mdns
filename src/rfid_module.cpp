@@ -33,7 +33,7 @@ void RfidModule::setEnabled(bool en) {
         if (cfg.powerPin > 0) {
             pinMode(cfg.powerPin, OUTPUT);
             digitalWrite(cfg.powerPin, HIGH);
-            delay(20);  // minimal power-on delay
+            vTaskDelay(pdMS_TO_TICKS(20));  // minimal power-on delay
         }
         pinMode(cfg.dataPin, INPUT_PULLUP);
         if (cfg.clkPin > 0) pinMode(cfg.clkPin, INPUT_PULLUP);
@@ -61,7 +61,7 @@ void RfidModule::begin() {
     if (_cfg.powerPin > 0) {
         pinMode(_cfg.powerPin, OUTPUT);
         digitalWrite(_cfg.powerPin, HIGH);
-        delay(50);
+        vTaskDelay(pdMS_TO_TICKS(50));
     }
 
     // Configure DATA and CLK pins
@@ -324,7 +324,7 @@ bool RfidModule::writeCard(const String& uid) {
     digitalWrite(_cfg.dataPin, LOW);
     if (_cfg.powerPin > 0) {
         digitalWrite(_cfg.powerPin, HIGH);
-        delay(10);
+        vTaskDelay(pdMS_TO_TICKS(10));
     }
 
     // Helper: send one Manchester bit at 125kHz (RF/64)
