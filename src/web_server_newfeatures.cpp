@@ -20,6 +20,7 @@
 #include "subghz_module.h"
 #include "auth_manager.h"
 #include "config.h"
+#include <vector>
 #include <ArduinoJson.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
@@ -304,7 +305,6 @@ namespace SubGhzBrute {
 
             SubGhzSignal sig;
             sig.freqMhz = s_freq;
-            char rawStr[2048];
             String rs = "";
             for (auto v : raw) { rs += String(v); rs += " "; }
             sig.rawData = rs;
