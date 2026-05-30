@@ -30,6 +30,7 @@
 #include <Arduino.h>
 #include <LittleFS.h>
 #include <esp_log.h>
+#include <esp_system.h>            // esp_reset_reason() for boot diagnostics
 #include "task_manager.h"     // FreeRTOS task architecture
 #include "config.h"
 #include "gpio_config.h"
@@ -51,7 +52,6 @@
 #include "auth_manager.h"           // Batch 3: Authentication
 #include "watchdog_manager.h"       // Batch 3: Self-Healing Watchdog
 #include "log_rotation.h"           // Batch 4: Log Rotation + CSV Export
-#include "mic_module.h"
 #include "wifi_pen_module.h"        // WiFi Penetration Module
 #include "ac_detector.h"            // Non-Contact AC Power Detector
 
@@ -67,6 +67,22 @@ volatile uint32_t s_restartAt = 0;
 
 static unsigned long s_lastStatusBroadcast = 0;
 #define STATUS_BROADCAST_INTERVAL_MS 15000  // was 3s — frequent alloc/free fragments heap
+
+// ─────────────────────────────────────────────────────────────
+//  BOOT DIAGNOSTICS
+//  Set DIAG_VERBOSE 0 to remove the per-step boot trace and the
+//  end-of-boot self-test report (zero overhead when disabled).
+//  BOOT_STEP() prints the subsystem about to init + live heap, so
+//  if the device boot-loops you can see the EXACT step it died on
+//  (the last line printed before the reset is the culprit).
+// ─────────────────────────────────────────────────────────────
+#define DIAG_VERBOSE 1
+#if DIAG_VERBOSE
+  #define BOOT_STEP(name) Serial.printf("[BOOT] >>> init %-16s  heap=%u\n", name, ESP.getFreeHeap())
+#else
+  #define BOOT_STEP(name) ((void)0)
+#endif
+static void printBootDiagnostics();
 
 // ─────────────────────────────────────────────────────────────
 void setup() {
@@ -86,14 +102,17 @@ void setup() {
     setCpuFrequencyMhz(240);
 
     // ── LittleFS (always required) ────────────────────────────
+    BOOT_STEP("LittleFS");
     initFilesystem();
 
     // ── SD Card (optional - non-blocking if absent) ───────────
     // begin() returns immediately if no card is detected.
     // All existing features work unchanged without SD.
+    BOOT_STEP("SD card");
     sdMgr.begin();
 
     // ── IR Database ───────────────────────────────────────────
+    BOOT_STEP("IR database");
     irDB.begin();
 
     // ── Groups ────────────────────────────────────────────────
@@ -109,13 +128,12 @@ void setup() {
     macroMgr.begin();
 
     // ── New modules (Tasks 7-11) ─────────────────────────────
-    nfcModule.begin();
-    rfidModule.begin();
-    subGhzModule.begin();
-    nrf24Module.begin();
-    sysModule.begin();
-    wifiPen.begin();               // WiFi Pen Module
-    micModule.begin();             // Mic: I2S streaming + SD recording
+    BOOT_STEP("NFC");      nfcModule.begin();
+    BOOT_STEP("RFID");     rfidModule.begin();
+    BOOT_STEP("SubGHz");   subGhzModule.begin();
+    BOOT_STEP("NRF24");    nrf24Module.begin();
+    BOOT_STEP("System");   sysModule.begin();
+    BOOT_STEP("WiFi-Pen"); wifiPen.begin();               // WiFi Pen Module
 
     // ── Audit Trail (Batch 1) ─────────────────────────────────
     auditMgr.begin();
@@ -133,6 +151,7 @@ void setup() {
     logRotMgr.begin();
 
     // ── WiFi (AP+STA dual-mode with event handler) ────────────
+    BOOT_STEP("WiFi");
     wifiMgr.begin();
 
     // ── AC Non-Contact Detector ───────────────────────────────
@@ -150,12 +169,15 @@ void setup() {
 
 
     // ── IR Receiver ───────────────────────────────────────────
+    BOOT_STEP("IR receiver");
     irReceiver.onReceive(onIRReceived);
     irReceiver.begin(irPins.recvPin);
 
     // ── IR Transmitter ────────────────────────────────────────
+    BOOT_STEP("IR transmit");
     irTransmitter.begin(irPins);
 
+    BOOT_STEP("Web server");
     webUI.begin();
     Serial.printf("[MEM] post-webUI heap=%u\n", ESP.getFreeHeap());
     webUI.startCaptivePortal();  // Batch 3: DNS redirect on AP mode
@@ -182,6 +204,9 @@ void setup() {
                       ss.totalBytes / (1024ULL * 1024ULL),
                       (ss.totalBytes - ss.usedBytes) / (1024ULL * 1024ULL));
     }
+
+    // ── Full boot self-test report (see DIAG_VERBOSE) ─────────
+    printBootDiagnostics();
 
     // All modules initialised successfully - reset boot-failure counter.
     // This must be the LAST call in setup() so only a full clean boot clears it.
@@ -232,7 +257,6 @@ void loop() {
     auditMgr.loop();   // Batch 1
     authMgr.loop();    // Batch 3: expire sessions
     wdtMgr.loop();     // Batch 3: watchdog feed + health check
-    micModule.loop();  // Mic: SD recording tick
     // loopCaptivePortal() already called inside webUI.loop()
     logRotMgr.loop();  // Batch 4: auto log rotation
 
@@ -395,4 +419,76 @@ static void printBanner() {
                   getCpuFrequencyMhz(),
                   (unsigned)(ESP.getFlashChipSize() >> 20),
                   ESP.getFreeHeap());
+}
+
+// ─────────────────────────────────────────────────────────────
+//  printBootDiagnostics()  —  end-of-boot SELF-TEST report.
+//  Prints, on every boot, a one-glance health snapshot:
+//   - why the chip last reset (PANIC / brownout / watchdog = bad)
+//   - heap headroom
+//   - which hardware modules were actually detected on the bus
+//   - network reachability (AP / STA IP / mDNS)
+//   - whether auth is locking the API
+//  This is the first thing to read when "a feature doesn't work".
+// ─────────────────────────────────────────────────────────────
+static void printBootDiagnostics() {
+#if DIAG_VERBOSE
+    auto YN = [](bool b) -> const char* { return b ? "OK " : "-- "; };
+
+    const char* rrs;
+    switch (esp_reset_reason()) {
+        case ESP_RST_POWERON:   rrs = "power-on (normal)";      break;
+        case ESP_RST_SW:        rrs = "software restart";       break;
+        case ESP_RST_PANIC:     rrs = "PANIC / exception  <!>"; break;
+        case ESP_RST_INT_WDT:   rrs = "interrupt watchdog <!>"; break;
+        case ESP_RST_TASK_WDT:  rrs = "task watchdog      <!>"; break;
+        case ESP_RST_WDT:       rrs = "other watchdog     <!>"; break;
+        case ESP_RST_BROWNOUT:  rrs = "BROWNOUT (weak USB power) <!>"; break;
+        case ESP_RST_DEEPSLEEP: rrs = "deep-sleep wake";        break;
+        default:                rrs = "unknown";                break;
+    }
+
+    Serial.println(F("\n================ BOOT SELF-TEST ================"));
+    Serial.printf("Last reset : %s\n", rrs);
+    Serial.printf("Heap       : %u free  (min-ever %u)\n",
+                  ESP.getFreeHeap(), ESP.getMinFreeHeap());
+
+    Serial.println(F("-- Core ----------------------------------------"));
+    Serial.printf("  [%s] LittleFS      (%u KB total)\n",
+                  YN(LittleFS.totalBytes() > 0),
+                  (unsigned)(LittleFS.totalBytes() / 1024));
+    Serial.printf("  [%s] SD card       (%s)\n",
+                  YN(sdMgr.isAvailable()),
+                  sdMgr.isAvailable() ? "mounted" : "absent");
+    Serial.printf("       IR buttons=%u  groups=%u  schedules=%u\n",
+                  (unsigned)irDB.size(), (unsigned)groupMgr.size(),
+                  (unsigned)scheduler.size());
+
+    Serial.println(F("-- IR ------------------------------------------"));
+    Serial.printf("  RX = GPIO%d %s   TX channels active = %u\n",
+                  irReceiver.activePin(),
+                  irReceiver.isPaused() ? "(PAUSED)" : "",
+                  irTransmitter.activeCount());
+
+    Serial.println(F("-- Hardware modules (detected on bus?) ---------"));
+    Serial.printf("  [%s] NFC  PN532    enabled=%s\n", YN(nfcModule.isConnected()),  nfcModule.isEnabled()  ? "yes" : "no");
+    Serial.printf("  [%s] RFID RC522    enabled=%s\n", YN(rfidModule.isConnected()), rfidModule.isEnabled() ? "yes" : "no");
+    Serial.printf("  [%s] NRF24         enabled=%s\n", YN(nrf24Module.isConnected()),nrf24Module.isEnabled()? "yes" : "no");
+    Serial.printf("  [%s] SubGHz CC1101 enabled=%s\n", YN(subGhzModule.isConnected()),subGhzModule.isEnabled()?"yes":"no");
+    Serial.printf("  [%s] AC detector\n",              YN(acDetector.isEnabled()));
+
+    Serial.println(F("-- Network -------------------------------------"));
+    Serial.printf("  AP   : http://%s\n", wifiMgr.apIP().c_str());
+    String sta = wifiMgr.staIP();
+    Serial.printf("  STA  : %s\n", sta.length() ? sta.c_str() : "(not connected to a router)");
+    Serial.printf("  mDNS : %s  ->  http://%s.local\n",
+                  wifiMgr.mdnsActive() ? "active" : "OFF",
+                  MDNS_HOSTNAME);
+
+    Serial.println(F("-- Security ------------------------------------"));
+    Serial.printf("  API auth : %s%s\n",
+                  authMgr.isAuthEnabled() ? "ENABLED (login required)" : "disabled (open)",
+                  authMgr.isFirstLogin() ? "  [first-login]" : "");
+    Serial.println(F("================================================\n"));
+#endif
 }

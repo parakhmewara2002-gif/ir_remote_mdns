@@ -174,3 +174,18 @@
 #define MACRO_NAME_MAX         32       // max filename chars (without .json)
 #define MACRO_MAX_STEPS        32       // max steps per LittleFS macro
 #define MACRO_STEP_MAX_DELAY   10000    // ms max delay between steps
+
+// ─────────────────────────────────────────────────────────────
+//  HTTP REQUEST LOGGING  (per-feature / per-button diagnostics)
+//  When 1, every API response prints a line on serial @115200:
+//     [REQ] POST   /api/transmit                  -> 200 OK
+//     [REQ] GET    /api/v1/rules/triggers         -> 404 MISSING
+//     [REQ] POST   /api/sd/format                 -> 403 AUTH
+//  This covers ~every tab & button automatically because all
+//  handlers reply through sendJson()/sendJsonDoc(), and missing
+//  routes fall through onNotFound() (also a sendJson 404).
+//  So: tap a button -> watch the line. "MISSING" = route not in
+//  firmware, "AUTH" = blocked by login, "FAIL" = handler error.
+//  Set to 0 for a quiet production build.
+// ─────────────────────────────────────────────────────────────
+#define DIAG_HTTP_LOG          1

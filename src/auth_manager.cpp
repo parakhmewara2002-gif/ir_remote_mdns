@@ -3,6 +3,7 @@
 // ============================================================
 #include "auth_manager.h"
 #include "audit_manager.h"
+#include "config.h"        // DIAG_HTTP_LOG toggle
 #include <esp_mac.h>      // S-01: esp_read_mac() for MAC-derived default password
 
 AuthManager authMgr;
@@ -109,6 +110,10 @@ String AuthManager::extractBearer(AsyncWebServerRequest* req) {
 bool AuthManager::checkAuth(AsyncWebServerRequest* req) {
     if (!_enabled) return true;
     if (validateToken(extractBearer(req))) return true;
+#if DIAG_HTTP_LOG
+    Serial.printf("[REQ] %-6s %-34s -> 401 AUTH (login required)\n",
+                  "?", req->url().c_str());
+#endif
     AsyncWebServerResponse* r = req->beginResponse(401,
         "application/json",
         "{\"error\":\"Unauthorized\","

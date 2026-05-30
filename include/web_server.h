@@ -83,8 +83,6 @@ private:
     void setupRestApiV1Routes ();
     void setupAuditRoutes     ();
     void setupDebugRoutes     ();
-    void setupMicRoutes       ();
-    void setupMicPinsRoute    ();
 
     // Batch 3
     void setupAuthRoutes         ();

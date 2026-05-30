@@ -12,7 +12,6 @@
 #include <LittleFS.h>
 #include <ArduinoJson.h>
 #include "sd_manager.h"
-#include "mic_module.h"
 #include <esp_heap_caps.h>    // heap_caps_get_largest_free_block()
 #include <esp_system.h>       // esp_get_minimum_free_heap_size()
 #include "macro_manager.h"
@@ -30,10 +29,41 @@
 WebUI webUI;
 
 // ── Helpers ───────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────
+//  Per-request diagnostic log (toggle DIAG_HTTP_LOG in config.h).
+//  Called from the two central response helpers below, so it fires
+//  for essentially every tab/button in the UI without touching the
+//  ~300 individual route handlers.
+// ─────────────────────────────────────────────────────────────
+#if DIAG_HTTP_LOG
+static const char* _reqMethod(AsyncWebServerRequest* req) {
+    switch (req->method()) {
+        case HTTP_GET:     return "GET";
+        case HTTP_POST:    return "POST";
+        case HTTP_DELETE:  return "DELETE";
+        case HTTP_OPTIONS: return "OPT";
+        default:           return "?";
+    }
+}
+static void _logReq(AsyncWebServerRequest* req, int code) {
+    const char* res = (code >= 200 && code < 300) ? "OK"
+                    : (code == 401 || code == 403) ? "AUTH"
+                    : (code == 404)                ? "MISSING"
+                    : (code >= 400)                ? "FAIL"
+                    :                                "..";
+    Serial.printf("[REQ] %-6s %-34s -> %d %s\n",
+                  _reqMethod(req), req->url().c_str(), code, res);
+}
+  #define LOG_REQ(req, code) _logReq((req), (code))
+#else
+  #define LOG_REQ(req, code) ((void)0)
+#endif
+
 // FIX: sendJson now uses AsyncResponseStream - writes directly to TCP send buffer.
 // The old version built a String copy of 'json' and then copied it again into
 // the response buffer (two allocations). AsyncResponseStream eliminates both.
 void sendJson(AsyncWebServerRequest* req, int code, const String& json) {
+    LOG_REQ(req, code);
     AsyncResponseStream* r = req->beginResponseStream("application/json");
     r->setCode(code);
     r->addHeader("Access-Control-Allow-Origin", "*");
@@ -44,6 +74,7 @@ void sendJson(AsyncWebServerRequest* req, int code, const String& json) {
 // Convenience overload: serialize a JsonDocument directly to stream - zero String alloc.
 // Use this for all new handlers: sendJsonDoc(req, 200, doc)
 void sendJsonDoc(AsyncWebServerRequest* req, int code, const JsonDocument& doc) {
+    LOG_REQ(req, code);
     AsyncResponseStream* r = req->beginResponseStream("application/json");
     r->setCode(code);
     r->addHeader("Access-Control-Allow-Origin", "*");
@@ -126,8 +157,6 @@ void WebUI::begin() {
     setupRestApiV1Routes();
     setupAuditRoutes();
     setupDebugRoutes();
-    // Mic routes: only if I2S mic is active (saves ~11 routes = ~3KB)
-    if (micModule.i2sActive()) { setupMicRoutes(); setupMicPinsRoute(); }
     setupAuthRoutes();
     setupCaptivePortal();
     setupWatchdogRoutes();
