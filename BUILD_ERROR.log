@@ -1,13 +1,5 @@
-Turn off this advice by setting config variable advice.detachedHead to false
-
-Library Manager: Adafruit PN532@1.3.0+sha.0bf3483 has been installed!
-Library Manager: Resolving dependencies...
-Library Manager: Installing Adafruit BusIO
-Unpacking 0% 10% 20% 30% 40% 50% 60% 70% 80% 90% 100%
-Library Manager: Adafruit BusIO@1.17.4 has been installed!
-Library Manager: Installing git+https://github.com/adafruit/Adafruit_BusIO.git#1.16.1
 git version 2.54.0
-Cloning into '/home/runner/.platformio/.cache/tmp/pkg-installing-i7x6zxm_'...
+Cloning into '/home/runner/.platformio/.cache/tmp/pkg-installing-7aknyqvo'...
 Note: switching to '15fbda592d1b237b0a92cfb91841adb01a34efd9'.
 
 You are in 'detached HEAD' state. You can look around, make experimental
@@ -86,7 +78,7 @@ Compiling .pio/build/esp32dev/src/nfc_module.cpp.o
 Compiling .pio/build/esp32dev/src/nrf24_module.cpp.o
 In file included from .pio/libdeps/esp32dev/FastLED/src/FastLED.h:75,
                  from include/system_module.h:9,
-                 from src/main.cpp:49:
+                 from src/main.cpp:50:
 .pio/libdeps/esp32dev/FastLED/src/fastspi.h:157:23: note: #pragma message: No hardware SPI pins defined.  All SPI access will default to bitbanged output
  #      pragma message "No hardware SPI pins defined.  All SPI access will default to bitbanged output"
                        ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -107,7 +99,7 @@ Compiling .pio/build/esp32dev/src/web_server.cpp.o
 Compiling .pio/build/esp32dev/src/web_server_ac.cpp.o
 In file included from .pio/libdeps/esp32dev/FastLED/src/FastLED.h:75,
                  from include/system_module.h:9,
-                 from src/web_server.cpp:23:
+                 from src/web_server.cpp:22:
 .pio/libdeps/esp32dev/FastLED/src/fastspi.h:157:23: note: #pragma message: No hardware SPI pins defined.  All SPI access will default to bitbanged output
  #      pragma message "No hardware SPI pins defined.  All SPI access will default to bitbanged output"
                        ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -122,29 +114,37 @@ In file included from include/web_server.h:7,
      AsyncWebServerResponse* beginResponse_P(int code, const String& contentType, const uint8_t* content, size_t len, AwsTemplateProcessor callback = nullptr) {
                              ^~~~~~~~~~~~~~~
 Compiling .pio/build/esp32dev/src/web_server_batch3.cpp.o
-Compiling .pio/build/esp32dev/src/web_server_batch4.cpp.o
 In file included from .pio/libdeps/esp32dev/FastLED/src/FastLED.h:75,
                  from include/system_module.h:9,
                  from src/web_server_batch1.cpp:25:
 .pio/libdeps/esp32dev/FastLED/src/fastspi.h:157:23: note: #pragma message: No hardware SPI pins defined.  All SPI access will default to bitbanged output
  #      pragma message "No hardware SPI pins defined.  All SPI access will default to bitbanged output"
                        ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Compiling .pio/build/esp32dev/src/web_server_batch4.cpp.o
 Compiling .pio/build/esp32dev/src/web_server_mic.cpp.o
 Compiling .pio/build/esp32dev/src/web_server_modules.cpp.o
 Compiling .pio/build/esp32dev/src/web_server_newfeatures.cpp.o
+src/web_server_mic.cpp:37:6: error: no declaration matches 'void WebUI::setupMicRoutes()'
+ void WebUI::setupMicRoutes() {
+      ^~~~~
+src/web_server_mic.cpp:37:6: note: no functions named 'void WebUI::setupMicRoutes()'
+In file included from src/web_server_mic.cpp:4:
+include/web_server.h:18:7: note: 'class WebUI' defined here
+ class WebUI {
+       ^~~~~
+src/web_server_mic.cpp:246:6: error: no declaration matches 'void WebUI::setupMicPinsRoute()'
+ void WebUI::setupMicPinsRoute() {
+      ^~~~~
+src/web_server_mic.cpp:246:6: note: no functions named 'void WebUI::setupMicPinsRoute()'
+In file included from src/web_server_mic.cpp:4:
+include/web_server.h:18:7: note: 'class WebUI' defined here
+ class WebUI {
+       ^~~~~
+*** [.pio/build/esp32dev/src/web_server_mic.cpp.o] Error 1
 In file included from .pio/libdeps/esp32dev/FastLED/src/FastLED.h:75,
                  from include/system_module.h:9,
                  from src/web_server_modules.cpp:10:
 .pio/libdeps/esp32dev/FastLED/src/fastspi.h:157:23: note: #pragma message: No hardware SPI pins defined.  All SPI access will default to bitbanged output
  #      pragma message "No hardware SPI pins defined.  All SPI access will default to bitbanged output"
                        ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-src/web_server_newfeatures.cpp: In lambda function:
-src/web_server_newfeatures.cpp:640:13: error: 'irDB' was not declared in this scope
-             irDB.setAutoSave(en);
-             ^~~~
-src/web_server_newfeatures.cpp: In lambda function:
-src/web_server_newfeatures.cpp:652:32: error: 'acDetector' was not declared in this scope
-             doc["running"]   = acDetector.isEnabled();
-                                ^~~~~~~~~~
-*** [.pio/build/esp32dev/src/web_server_newfeatures.cpp.o] Error 1
-========================= [FAILED] Took 48.48 seconds =========================
+========================= [FAILED] Took 45.43 seconds =========================
